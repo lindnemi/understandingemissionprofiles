@@ -34,7 +34,7 @@ The repository is structured as follows:
 * `src` holds `.Rmd` files for reproducing our analysis, and `.html` files that render code, output and results in an easily accesible format.
 
 
-If you want to familiarize yourself with the code we recommend starting with the `.html` files in `src`.
+If you want to familiarize yourself with the code we recommend starting by viewing the `.html` files in `src` in a web browser.
 
 # Preliminaries: Version control
 
