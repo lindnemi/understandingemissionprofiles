@@ -1,0 +1,988 @@
+---
+title: "Data Preprocessing"
+author: "Michael Lindner, Antonia Schuster"
+date: "11/19/2021"
+bibliography: bibliography.bib
+output: 
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# When knitting the document the root dir has to be set
+# knitr::opts_knit$set(root.dir = "..")
+# This is now done via Rstudio global options.
+```
+
+# Preliminaries: Version control
+
+For exact reproducibility of our results we use the package manager `renv` to keep track of the versions of all packages used.
+
+To reproduce our analysis, install `renv` then use `renv::activate()` to activate the environment specified in the lockfile. You might have to use `renv::hydrate()` to install required packages as well. Afterwards you can run the R code as you would normally do.
+
+# Preprocessing
+
+## Data loading and variable selection
+
+
+### Survey data
+
+```{r message=FALSE}
+library("haven")
+i_hhresp <- read_sav("data/raw/i_hhresp.sav")
+
+# Select relevant fields
+library("dplyr")
+df1 <- dplyr::select(i_hhresp, i_hidp, i_psu, i_strata, i_hhdenui_xw, i_gor_dv,
+                     i_intdatey, i_fuelhave1, i_fuelhave2, i_fuelhave3, 
+                     i_fuelhave4, i_fuelhave96, i_fuelduel, i_xpduely, 
+                     i_duelpay, i_xpelecy,i_elecpay, i_xpgasy, i_gaspay, 
+                     i_xpoily, i_xpsfly, i_hhdenui_xw, i_urban_dv, i_hhsize, 
+                     i_fihhmnnet1_dv, i_nemp_dv, i_nue_dv, i_hhtype_dv, 
+                     i_hsownd, i_ff_hsbeds, i_hhtype_dv, i_fborn, i_nkids_dv, 
+                     i_xphsdb, i_ieqmoecd_dv, i_hsbeds, i_hsrooms, i_npensioner,
+                     i_nadoecd_dv, i_nchoecd_dv, i_ncouple_dv, i_nonepar_dv,
+                     i_heatch)
+
+
+# remove large dataframe
+rm(i_hhresp)
+```
+
+We will use equivalised household net income according to the OECD scale for our
+analysis. Here we add the corresponding column as outlined in the USoc manual.
+
+```{r}
+df1$eq_income <- (df1$i_fihhmnnet1_dv / df1$i_ieqmoecd_dv) # 12 NAs
+```
+
+
+
+# Summarising individual level information at the household level
+
+## Data loading
+```{r results=FALSE}
+dfi <- read_sav("data/raw/i_indresp.sav")
+names(dfi)
+dfind <- dplyr::select(dfi, i_hidp, pidp, i_health, i_sex_dv, i_aidhh,
+                       i_hiqual_dv, i_age_dv)
+rm(dfi)
+```
+
+## People with health condition
+```{r}
+
+dfind$flag_hcond <- dfind$i_health == 1 
+
+dfind_nhealth <- dfind %>%
+                 group_by(i_hidp) %>%
+                 count(flag_hcond, name="nhcond") %>%
+                 filter(flag_hcond) %>%
+                 select(i_hidp, nhcond) %>%
+                 full_join(dfind, by="i_hidp") %>%
+                 select(i_hidp, nhcond) %>%
+                 distinct(i_hidp, nhcond) %>%
+                 mutate_at(vars(nhcond), ~replace(., is.na(.), 0))
+            
+```
+### Merge data frames
+
+Make sure to execute this only once
+```{r}
+df1$from_hh <- 1
+dfind_nhealth$from_indall <- 1
+
+df1 <- full_join(dfind_nhealth, df1, by="i_hidp")
+
+
+```
+
+### Clean up
+```{r results=FALSE}
+table(df1$from_hh, df1$from_indall, exclude=FALSE, deparse.level = 2)
+
+# Filter to keep only those who appear in hhresp
+df1 <- filter(df1, from_hh==1)
+
+# drop the variables which indicate where the record came from
+df1 <- select(df1, -from_hh, -from_indall)
+```
+## Females
+
+```{r}
+# i_indresp contains only adults aged 16 and above
+dfind$flag_female <- dfind$i_sex_dv == 2
+
+dfind_nfem    <- dfind %>%
+                 group_by(i_hidp) %>%
+                 count(flag_female, name="nfem") %>%
+                 filter(flag_female) %>%
+                 select(i_hidp, nfem) %>%
+                 full_join(dfind, by="i_hidp") %>%
+                 select(i_hidp, nfem) %>%
+                 distinct(i_hidp, nfem) %>%
+                 mutate_at(vars(nfem), ~replace(., is.na(.), 0))
+```
+
+
+### Merge data frames
+
+Make sure to execute this only once
+```{r}
+df1$from_hh <- 1
+
+dfind_nfem$from_indall <- 1
+
+df1 <- full_join(dfind_nfem, df1, by="i_hidp")
+
+```
+### Clean up
+```{r results=FALSE}
+
+table(df1$from_hh, df1$from_indall, exclude=FALSE, deparse.level = 2)
+# Filter to keep only those who appear in hhresp
+df1 <- filter(df1, from_hh==1)
+
+# drop the variables which indicate where the record came from
+df1 <- select(df1, -from_hh, -from_indall)
+```
+
+## Education
+```{r}
+# Hiqual not missing
+
+dfind_hiqual    <- dfind %>%
+                 group_by(i_hidp) %>%
+                 slice_min(order_by = i_hiqual_dv) %>%
+                 rename(hh_hiqual = i_hiqual_dv) %>%
+                 select(i_hidp, hh_hiqual) %>%
+                 full_join(dfind, by="i_hidp") %>%
+                 select(i_hidp, hh_hiqual) %>%
+                 distinct(i_hidp, hh_hiqual) %>%
+                 # Recode "missing hiqual" to 10, maybe also rename levels
+                 mutate_at(vars(hh_hiqual), ~replace(., . == -8, 10)) %>%
+                 mutate_at(vars(hh_hiqual), ~replace(., . == -9, 10))
+
+
+```
+
+
+### Merge data frames
+
+Make sure to execute this only once
+```{r}
+df1$from_hh <- 1
+
+dfind_hiqual$from_indall <- 1
+
+df1 <- full_join(dfind_hiqual, df1, by="i_hidp")
+
+```
+### Clean up
+```{r}
+
+table(df1$from_hh, df1$from_indall, exclude=FALSE, deparse.level = 2)
+# Filter to keep only those who appear in hhresp
+df1 <- filter(df1, from_hh==1)
+
+# drop the variables which indicate where the record came from
+df1 <- select(df1, -from_hh, -from_indall)
+
+
+```
+
+Add a new label for the value 10 introduced above that correponds to "Missing qualification data"
+
+```{r}
+library("labelled")
+# The 7th level of hh_hiqual corresponds to Missing data
+val_label(df1$hh_hiqual, 10) <- "Missing `qualification`"
+
+
+```
+
+```{r}
+sum(is.na(df1$hh_hiqual))
+```
+
+
+### Price data and conversion factors
+
+
+Fuel price data and conversion factors are available from the Department of Energy and Climate Change (DECC), for details see [@buchs2013emits]. Gas prices for Northern Ireland (NI) are available from the Annual Transparency Report of NI's Utility Regulator (UREGNI). 
+
+
+```{r message=FALSE}
+library(readxl)
+p_elec_paymentmethods <- read_excel("data/raw/p_elec_paymentmethods.xlsx")
+p_gas_paymentmehods <- read_excel("data/raw/p_gas_paymentmehods.xlsx")
+p_oil <- read_excel("data/raw/p_oil_prices.xlsx")
+
+# Combine price tables into one dataframe
+prices_df2 <- cbind(p_elec_paymentmethods,p_gas_paymentmehods,p_oil)
+# Conversion factors
+co2_df3 <- read_excel("data/raw/co2_df3.xlsx")
+```
+
+The DECC offers price data for credit, debit and prepayment. However USoc
+reported several other payment methods. Hence we need a mapping from the methods
+to the available price data.
+
+```{r}
+payment_mapping <- c("debit", "debit", "debit", "prepay", "prepay", "credit", "debit", "debit", "debit")
+```
+
+## Re-coding missing values 
+
+We use the function `na_values` from the package `labelled` to re-code the values `97, -9, -8, -7, -2, -1` as 
+user-defined missing values and to convert them to `NA`.
+
+```{r}
+for (i in 1:ncol(df1)) {
+  na_values(df1[[i]]) <- c(97, -9, -8, -7, -2, -1)
+}
+```
+
+The missing labels for the variable `i_psu` don't include `97`. Actually there 
+are no missing values in `i_psu` at all. Since there are some households that 
+have an `i_psu` value of `97` we have to remove `97` from the na-labels of that 
+variable.
+
+```{r}
+na_values(df1$i_psu) <- c(-9, -8, -7, -2, -1)
+```
+
+Finally we can transform all user-defined missing values into NA
+
+```{r}
+df1 <- user_na_to_na(df1)
+```
+
+
+
+## Imputing duel fuel gas to electricity ratio
+
+Many  households (HHs) have a combined gas and electricity bill. They reported
+only the combined expenditure and hence direct conversion of
+their expenditures to CO2 consumption is not possible.
+Since this is the case for many households we want to include them in our analysis nevertheless.
+
+```{r}
+sum(df1$i_fuelduel == 1, na.rm = T) # Dual Fuel
+sum(df1$i_fuelduel == 2, na.rm = T) # Split Bill
+
+```
+
+
+In order to do this we compute the ratios of gas and electricity expenditure to
+combined expenditure for HHs with split bills. The mean of this
+ratio will be used to artificially split the dualfuel
+bill into estimated direct expenditures for gas and electricity. 
+
+
+
+```{r}
+# Initialize columns for ratios
+df1$gas_ratio <- as.numeric(rep(NA, nrow(df1)))
+df1$elec_ratio <- as.numeric(rep(NA, nrow(df1)))
+```
+
+We can only compute the splitting ratio for people that have gas AND electricity.
+Additionally we require those HHs to not use other fuels, as this will influence the ratio.
+These households are removed later on anyhow because we can't reliably estimate their emissions
+since we lack a conversion factor for other fuels.
+
+```{r}
+gas_elec_xp <- !is.na(df1$i_xpgasy) & df1$i_xpgasy > 0  &
+               !is.na(df1$i_xpelecy) & df1$i_xpelecy > 0 &
+               !is.na(df1$i_fuelhave4) & df1$i_fuelhave4 == 0  
+
+df1[gas_elec_xp,]$gas_ratio <- (df1[gas_elec_xp,]$i_xpgasy / 
+                                (df1[gas_elec_xp,]$i_xpelecy + df1[gas_elec_xp,]$i_xpgasy))
+df1[gas_elec_xp,]$elec_ratio <- 1 - df1[gas_elec_xp,]$gas_ratio
+```
+
+Further we differentiate between HHs with and without oil as additional energy source and 
+construct two corresponding logical vectors for subsetting,
+
+Since splitting the expenditure is only possible when expenditure was reported,
+we need an additional vector.
+
+```{r}
+hh_no_oil <- !is.na(df1$i_fuelhave3) & df1$i_fuelhave3 == 0
+hh_oilhav <- !is.na(df1$i_fuelhave3) & df1$i_fuelhave3 == 1
+hh_duelxp <- !is.na(df1$i_xpduely) & df1$i_xpduely > 0
+```
+
+For HHs with duelfuel bill we derive the payment methods for gas and electricity
+from the duelfuel variable.
+
+```{r}
+hh_dualfuel = !is.na(df1$i_fuelduel) & df1$i_fuelduel == 1
+df1[hh_dualfuel,]$i_elecpay <- df1[hh_dualfuel,]$i_duelpay
+df1[hh_dualfuel,]$i_gaspay <- df1[hh_dualfuel,]$i_duelpay 
+```
+
+We incorporate survey design weights to better account for bias in
+the survey when estimating the splitting ratio.
+
+```{r message=FALSE}
+library("survey")
+
+options(survey.lonely.psu = "adjust")
+
+svy_df <- svydesign(id=~i_psu,
+                    strata=~i_strata,
+                    weights=~i_hhdenui_xw,
+                    data=df1)
+```
+Total weight
+```{r}
+sum(df1$i_hhdenui_xw)
+```
+
+
+Finally we assign the weighted and differentiated mean splitting ratios to the HHs 
+with duel fuel bill and use that ratio to impute the gas and electricity expenditure.
+
+```{r}
+df1[hh_duelxp & hh_no_oil,]$elec_ratio <- svymean(~elec_ratio, subset(svy_df, gas_elec_xp & hh_no_oil))[1]
+df1[hh_duelxp & hh_no_oil,]$gas_ratio  <- svymean(~gas_ratio , subset(svy_df, gas_elec_xp & hh_no_oil))[1]
+df1[hh_duelxp & hh_oilhav,]$elec_ratio <- svymean(~elec_ratio, subset(svy_df, gas_elec_xp & hh_oilhav))[1]
+df1[hh_duelxp & hh_oilhav,]$gas_ratio  <- svymean(~gas_ratio , subset(svy_df, gas_elec_xp & hh_oilhav))[1]
+
+df1[hh_duelxp,]$i_xpelecy  <- df1[hh_duelxp,]$i_xpduely * df1[hh_duelxp,]$elec_ratio
+df1[hh_duelxp,]$i_xpgasy   <- df1[hh_duelxp,]$i_xpduely * df1[hh_duelxp,]$gas_ratio
+```
+
+The total weight of all households for which we estimate the ratio is
+```{r}
+svytotal(~I(i_hhdenui_xw > -1), subset(svy_df, hh_duelxp))
+```
+... and for HH for which the ratio is available in the data.
+```{r}
+svytotal(~I(i_hhdenui_xw > -1), subset(svy_df, gas_elec_xp))
+```
+The electricity / gas ratio for HH without oil is
+```{r}
+df1[hh_duelxp & hh_no_oil,]$elec_ratio[1] / df1[hh_duelxp & hh_no_oil,]$gas_ratio[1]
+
+```
+
+```{r}
+df1[hh_duelxp & hh_oilhav,]$elec_ratio[1] / df1[hh_duelxp & hh_oilhav,]$gas_ratio[1]
+```
+The total mean of elec to gas for the dataset is
+```{r}
+r = svymean(~elec_ratio, svy_df, na.rm =T)
+svymean(~i_xpelecy, svy_df, na.rm =T) / svymean(~i_xpgasy, svy_df, na.rm =T)
+```
+
+
+
+## Computation of consumption 
+
+
+We start by adding variables that contain the exact prices each HH has to pay
+for the different energy sources. These variables
+are initialized as NA to later account for missing data.
+
+```{r}
+
+df1$elec_prize <- as.numeric(rep(NA, nrow(df1)))
+df1$gas_prize <- as.numeric(rep(NA, nrow(df1)))
+df1$oil_prize <- as.numeric(rep(NA, nrow(df1)))
+```
+
+To compute the prizes we need information on survey year, region and payment method (only for gas and electricity).
+Since some HH miss that information we need to select suitable subsets first
+
+```{r}
+not_missing_gor_or_yr = !is.na(df1$i_intdatey) & !is.na(df1$i_gor_dv)
+elecpay_method_available = !is.na(df1$i_elecpay)
+gaspay_method_available  = !is.na(df1$i_gaspay)
+```
+
+Adding the prize variable only makes sense if the expenditure for the corresponding
+fuel has been recorded. 
+
+```{r}
+elec_expenditure_available = !is.na(df1$i_xpelecy) 
+gas_expenditure_available  = !is.na(df1$i_xpgasy)
+oil_expenditure_available  = !is.na(df1$i_xpoily)
+```
+
+This gives us the subsets "good" people for which the prizes can be straightforwardly computed
+
+```{r}
+good_people_elec = not_missing_gor_or_yr & elec_expenditure_available & elecpay_method_available
+good_people_gas  = not_missing_gor_or_yr & gas_expenditure_available & gaspay_method_available
+good_people_oil  = not_missing_gor_or_yr & oil_expenditure_available
+```
+
+To look up the prizes in the prize data frame we define three functions, one for each source of energy.
+These functions will be applied to the HH dataframe in order to add the price data for each row.
+
+```{r}
+
+getElecPrize <- function(row){
+  year            <- toString(row[["i_intdatey"]] - 1) # with - 1 
+  region          <- row[["i_gor_dv"]]
+  payment_number  <- row[["i_elecpay"]]
+  payment_method  <- payment_mapping[payment_number]
+  column_name_df2 <- paste(year, "elec", payment_method, sep="_")
+  price_in_pound  <- prices_df2[region, column_name_df2] / 100
+  return(price_in_pound)
+}
+
+getGasPrize <- function(row){
+  year            <- toString(row[["i_intdatey"]] - 1) # with - 1 
+  region          <- row[["i_gor_dv"]]
+  payment_number  <- row[["i_gaspay"]]
+  payment_method  <- payment_mapping[payment_number]
+  column_name_df2 <- paste(year, "gas", payment_method, sep="_")
+  price_in_pound  <- prices_df2[region, column_name_df2] / 100
+  return(price_in_pound)
+}
+
+getOilPrize <- function(row){
+  year            <- toString(row[["i_intdatey"]] - 1) # with - 1 
+  region          <- row[["i_gor_dv"]]
+  column_name_df2 <- paste(year, "oil","prize", sep="_")
+  price_in_pound_per_litre  <- prices_df2[region, column_name_df2] / 100
+  # We don't need a conversion factor here if we have one for litres -> co2
+  price_in_pound <- price_in_pound_per_litre
+  return(price_in_pound)
+}
+
+
+df1[good_people_elec, "elec_prize"] <- apply(df1[good_people_elec,], 1, getElecPrize)
+df1[good_people_gas, "gas_prize"]   <- apply(df1[good_people_gas,], 1, getGasPrize)
+df1[good_people_oil, "oil_prize"]   <- apply(df1[good_people_oil,], 1, getOilPrize)
+```
+
+
+## Imputation of missing price data
+
+Unfortunately there are some people for which expenditure data is available
+but either government region or year or payment method is missing. 
+For those cases we will perform data imputation with weighted (categorical) means.
+
+We chose mean imputation since it is fairly simple to implement and since
+we only impute the price that an household has to pay. The main information affecting the CO2 emissions is still contained in the expenditure variabels.
+
+We start out by assessing how many prices have to be imputated
+```{r}
+sum(elec_expenditure_available & !elecpay_method_available) 
+sum(elec_expenditure_available & !not_missing_gor_or_yr)
+sum(gas_expenditure_available & !gaspay_method_available)
+sum(gas_expenditure_available & !not_missing_gor_or_yr)
+sum(oil_expenditure_available & !not_missing_gor_or_yr)
+```
+
+We define two functions that impute the prize with the mean of all households that
+have the same year, region or payment method respectively. When computing the means
+we take the survey weights of the corresponding subset into account
+
+Since imputation in the way implemented below is an iterative process,
+working line by line, the mean ElecPrize will change after a row has been imputed.
+
+Therefor we make a copy of df1 before imputation, that serves as the baseline on which the means are computed.
+
+The functions defined below are implemented in a straightforward but computationally inefficient manner.
+The surveymean is recomputed for each combination of missing values when it would be more efficient
+to cache already computed values and reuse them. However these functions have to be run only once.
+
+```{r}
+copy_for_mean_computation_df1 = data.frame(df1)
+# we use the survey package to equip that copy with weights
+svy_cp <- svydesign(id=~i_psu,
+                     strata=~i_strata,
+                     weights=~i_hhdenui_xw,
+                     data=copy_for_mean_computation_df1)
+
+imputeElecPrize <- function(row){
+  # If payment_method is missing
+  if (is.na(row[["i_elecpay"]])) {
+    year <- row[["i_intdatey"]]
+    region <- row[["i_gor_dv"]]
+    # doing it like this for every row is computationally inefficient but well...
+    svy_sub <-subset(svy_cp, good_people_elec & df1$i_intdatey == year & df1$i_gor_dv == region)
+    price_in_pound <- svymean(~elec_prize, svy_sub)[[1]]
+    return(price_in_pound)
+  }
+  # If year is unknown
+  if (is.na(row[["i_intdatey"]])) {
+    region <- row[["i_gor_dv"]]
+    payment_number <- row[["i_elecpay"]]
+    svy_sub <-subset(svy_cp, good_people_elec & df1$i_elecpay == payment_number & df1$i_gor_dv == region)
+    price_in_pound <- svymean(~elec_prize, svy_sub)[[1]]
+    return(price_in_pound)
+  }
+  # If region is unknown
+  if (is.na(row[["i_gor_dv"]])) {
+    year <- row[["i_intdatey"]]
+    payment_number <- row[["i_elecpay"]]
+    svy_sub <-subset(svy_cp, good_people_elec & df1$i_elecpay == payment_number & df1$i_intdatey == year)
+    price_in_pound <- svymean(~elec_prize, svy_sub)[[1]]
+    return(price_in_pound)
+  }
+}
+
+imputeGasPrize <- function(row){
+  # If payment_method is missing
+  # Unfortunately there is one HH with unknown gas_pay AND unknown region
+  if (is.na(row[["i_gaspay"]]) & is.na(row[["i_gor_dv"]])) {
+    year <- row[["i_intdatey"]]
+    svy_sub <-subset(svy_cp, good_people_gas & df1$i_intdatey == year)
+    price_in_pound <- svymean(~gas_prize, svy_sub)[[1]]
+    return(price_in_pound)
+  } else if (is.na(row[["i_gaspay"]])) {
+    # If only gaspay is unknown
+    year <- row[["i_intdatey"]]
+    region <- row[["i_gor_dv"]]
+    svy_sub <-subset(svy_cp, good_people_gas & df1$i_intdatey == year & df1$i_gor_dv == region)
+    price_in_pound <- svymean(~gas_prize, svy_sub)[[1]]
+    return(price_in_pound)
+  } else if (is.na(row[["i_gor_dv"]])) {
+    # If only region is unknown
+    year <- row[["i_intdatey"]]
+    payment_number <- row[["i_gaspay"]]
+    svy_sub <-subset(svy_cp, good_people_gas & df1$i_gaspay == payment_number & df1$i_intdatey == year)
+    price_in_pound <- svymean(~gas_prize, svy_sub)[[1]]
+    return(price_in_pound)
+  }
+  # If year is unknown
+  if (is.na(row[["i_intdatey"]])) {
+    region <- row[["i_gor_dv"]]
+    payment_number <- row[["i_gaspay"]]
+    svy_sub <-subset(svy_cp, good_people_gas & df1$i_gaspay == payment_number & df1$i_gor_dv == region)
+    price_in_pound <- svymean(~gas_prize, svy_sub)[[1]]
+    return(price_in_pound)
+  }
+}
+```
+
+The functions for electricty and gas price imputation can be applied straightforwardly.
+
+```{r}
+# For electricity
+df1[elec_expenditure_available & !good_people_elec, "elec_prize"] <- apply(df1[elec_expenditure_available & !good_people_elec,], 1, imputeElecPrize)
+
+# For gas
+
+df1[gas_expenditure_available & !good_people_gas, "gas_prize"] <- apply(df1[gas_expenditure_available & !good_people_gas,], 1, imputeGasPrize)
+```
+
+There is just one HH with missing incomplete oil prize data which we impute individually (region missing).
+
+```{r}
+oil_impute_year <- df1[oil_expenditure_available & !not_missing_gor_or_yr,]$i_intdatey
+oil_svy_sub <- subset(svy_cp, good_people_oil & df1$i_intdatey == oil_impute_year)
+oil_impute_price_in_pound <- svymean(~oil_prize, oil_svy_sub)[[1]]
+df1[oil_expenditure_available & !not_missing_gor_or_yr,]$oil_prize <- oil_impute_price_in_pound
+```
+
+With all  prize information stored in the data frame calculating the fuel consumption
+is easy.
+
+```{r}
+df1$elec_consumption <- df1$i_xpelecy / df1$elec_prize
+df1$gas_consumption  <- df1$i_xpgasy / df1$gas_prize
+df1$oil_consumption  <- df1$i_xpoily / df1$oil_prize
+```
+
+
+## Computation of CO2 emissions
+
+
+The process is in principle very similar to the computation of consumption data
+
+While the conversion factors for oil and gas are (approximately) the same for
+different years, the factor for electricity differs by almost 50%. 
+
+Since we are not primarily interested in absolute energy consumption emissions,
+but in relative emissions and their dependence on socio-economic factors,
+we have to ensure comparability across multiple years.
+To achieve that we compute weighted mean conversion factors for electricty.
+
+To do this we sum the relative survey weight of HHs responding in each year (stored in the 
+variable `i_hhdenui_xw`) and multiply with conversion factor for that year. 
+
+The original factors are stored in co2_df3.
+
+```{r}
+mean_elec_co2_factor= (sum(df1[df1$i_intdatey == 2017,]$i_hhdenui_xw, na.rm = T) * 0.44932 + 
+                            sum(df1[df1$i_intdatey == 2018,]$i_hhdenui_xw, na.rm = T) * 0.38443 +
+                            sum(df1[df1$i_intdatey == 2019,]$i_hhdenui_xw, na.rm = T) * 0.3072) /
+                            sum(df1[df1$i_intdatey > 2016,]$i_hhdenui_xw, na.rm = T)
+mean_gas_co2_factor  = 0.184
+mean_oil_co2_factor  = 2.53
+```
+
+CO2 emissions are then computed as fuel consumption multiplied by the corresponding factor.
+
+```{r}
+df1$elec_co2 <- df1$elec_consumption * mean_elec_co2_factor
+df1$gas_co2  <- df1$gas_consumption * mean_gas_co2_factor
+df1$oil_co2  <- df1$oil_consumption * mean_oil_co2_factor
+```
+
+Finally we sum the emission due to each energy source to arrive at an estimate of
+the total annual household CO2 emission due to energy consumption.
+
+The following code does that without producing `NA` when at least one type of emission is given.
+
+```{r}
+
+getTotalCo2 <- function(row){
+  total <- 0.
+  if (!is.na(row[["elec_co2"]])) { total <- total + row[["elec_co2"]] }
+  if (!is.na(row[["gas_co2"]]))  { total <- total + row[["gas_co2"]] }
+  if (!is.na(row[["oil_co2"]]))  { total <- total + row[["oil_co2"]] }
+  if (is.na(row[["elec_co2"]]) & is.na(row[["gas_co2"]]) & is.na(row[["oil_co2"]]))
+                                 { total <- NA }
+  return(total)
+}
+
+df1$total_co2 <- apply(df1, 1, getTotalCo2)
+```
+
+
+
+Finally we can check that all households who reported some kind of expenditure on
+electricity, gas or oil have been considered
+
+```{r}
+sum(df1$i_xpgasy > 0 | df1$i_xpelecy > 0 | 
+    df1$i_xpoily > 0 | df1$i_xpduely > 0, na.rm=T) == sum(df1$total_co2 > 0, na.rm=T)
+```
+
+
+
+##  Contrasts for linear regression
+
+When using factor variables in linear regressions a baseline has to be chosen
+against which the different levels can be compared. The coefficients of the model
+encode relative changes, with respect to that baseline. By default the first 
+factor level is used as baseline. Sometimes that leads to hard to interpret 
+coefficients, e.g. when the baseline is an atypical or little interesting case.
+In this cases a contrast may be used to encode another baseline.
+
+The following code changes the baseline of the variables for house ownership and
+household composition to be equal to the mean of all levels, a so-called
+**sum contrast**.
+
+```{r message=FALSE}
+library("labelled")
+for (rowname in c("i_hsownd", "i_hhtype_dv", "hh_hiqual")) {
+  df1[[rowname]] <- to_factor(df1[[rowname]],  drop_unused_labels = T)
+  contrasts(df1[[rowname]]) <- contr.sum(length(levels(df1[[rowname]])))
+}
+```
+
+Since independent variables in a regression model can not be perfectly collinear
+one of the factor levels has to be dropped nevertheless. It's coefficient can be
+obtained by a linear combination of all other coefficients. The above code drops
+the last levels. However for government region the last level is of particular
+interest since it corresponds to Northern Ireland (NI), and later we will see that,
+NI's coefficient  strongly deviates from the mean. Contrarily, the first level to 
+the North East, whose regression coefficent is close to the mean. Hence, we choose
+a sum contrast that does not drop NI but instead North East:
+
+```{r}
+for (rowname in c("i_gor_dv")) {
+  df1[[rowname]] <- to_factor(df1[[rowname]],  drop_unused_labels = T)
+  nrow_contr <- length(levels(df1[[rowname]]))
+  contrasts(df1[[rowname]]) <- rbind(rep(-1,nrow_contr-1), diag(nrow_contr-1))
+}
+```
+Now here a small caveat applys. This procedure lower the integer value associated
+to every level by 1, such that NI now correspond to level 11 instead of 12.
+
+## Subset selection
+
+The dataset still contains many households (HHs) for which no reliable CO2 emissions
+can be estimated. Therefor we have to select a suitable subset of `good_people` that
+fulfill all requirements and will be used for further analysis. We will create logical
+vectors and intersect them to arrive at the subset vector of `good_people`.
+
+We start be excluding HH with "other fuels" since for those no conversion factors
+exists and hence we would underestimate their CO2 emissions. These might be included
+in further analyses since the total expenditure of other fuels is small compared to those
+of gas, oil and electricity.
+
+```{r}
+unknown_fuels = !is.na(df1$i_fuelhave4) & df1$i_fuelhave4 == 1
+```
+
+We further exclude HH that have a certain fuel but don't specify how much they spent on it.
+They might have their own solar panels or an oil well, which would imply
+vastly different CO2 emissions.
+```{r}
+unknown_elec = !is.na(df1$i_fuelhave1) & df1$i_fuelhave1 == 1 &
+               !is.na(df1$i_xpelecy) & df1$i_xpelecy == 0
+
+unknown_gas = !is.na(df1$i_fuelhave2) & df1$i_fuelhave2 == 1 &
+              !is.na(df1$i_xpgasy) & df1$i_xpgasy == 0
+
+unknown_oil = !is.na(df1$i_fuelhave3) & df1$i_fuelhave3 == 1 &
+              !is.na(df1$i_xpoily) & df1$i_xpoily == 0
+```
+
+Finally there are some HHs for which we couldn't estimate CO2 emission due to lacking data
+```{r}
+unknown_co2 = is.na(df1$total_co2)
+```
+
+HHs that fall into none of these categories are "good".
+
+```{r}
+known_people = !(unknown_fuels | unknown_elec | unknown_gas | unknown_oil | 
+                unknown_co2)
+```
+
+Let's have a look at how much HHs belong into each category.
+
+```{r}
+sum(unknown_fuels)
+sum(unknown_elec)
+sum(unknown_gas)
+sum(unknown_oil)
+sum(unknown_co2)
+sum(known_people)
+```
+
+## Regularization
+
+Some households have especially high or low carbon emissions. Most of those
+are likely to be results of data collection errors or incomplete responses. 
+We regularize the data by discarding the samples in the top and bottom half
+percentile of total carbon emissions.
+
+```{r}
+ 
+bottom_half_percentile = known_people & df1$total_co2 < quantile(df1[known_people,]$total_co2, 0.005, na.rm=T)
+top_half_percentile = known_people & df1$total_co2 > quantile(df1[known_people,]$total_co2, 0.995, na.rm=T)
+
+sum(known_people) / sum(bottom_half_percentile | top_half_percentile) # sanity check
+
+good_people = known_people & !(bottom_half_percentile | top_half_percentile)
+
+df1$good <- good_people
+
+dfgood = df1[good_people,]
+```
+
+The final subset used for our analysis contains `r sum(good_people)` of `r nrow(df1)` households.
+
+## Adding survey weights
+
+Finally we can add weights and start the analysis.
+
+We define two different data sets, svy_all and svy_good
+- svy_all: contains all data, and is used e.g. for income analysis
+- svy_good: contains all **good** HHs, we use it for CO2 emissions analsyis
+
+```{r}
+svy_all <- svydesign(id=~i_psu,
+                     strata=~i_strata,
+                     weights=~i_hhdenui_xw,
+                     data=df1)
+```
+
+
+## Income Deciles
+
+With the weights attached to the data we can compute weighted deciles of disposable 
+and equivalised household net incomes. First compute the deciles...
+
+```{r}
+hh_income_deciles <- svyquantile(~i_fihhmnnet1_dv, svy_all, seq(from=0.1, to=0.9, by=0.1))
+eq_income_deciles <- svyquantile(~eq_income, svy_all, seq(from=0.1, to=0.9, by=0.1))
+```
+
+Then update the `survey` object with a new column
+
+```{r}
+svy_all <- update(svy_all, 
+                  hh_income_decile = factor(1 + findInterval(i_fihhmnnet1_dv, hh_income_deciles)))
+svy_all <- update(svy_all, 
+                  eq_income_decile = factor(1 + findInterval(eq_income, eq_income_deciles)))
+```
+
+As expected the income increases from decile to decile.
+
+```{r}
+svyby(~eq_income, ~eq_income_decile, svy_all, svymean)
+```
+
+Now we create the `svy_good` object which contains the HHs suitable for CO2 analysis.
+It inherits the variables for the income deciles from the `svy_all` object.
+
+```{r}
+svy_good <- subset(svy_all, good_people)
+```
+
+We add a new column for per capita CO2 emissions
+
+```{r}
+
+svy_good <- update(svy_good, per_capita_co2 = total_co2 / i_hhsize)
+```
+
+
+
+## Preparing emission quartile analysis
+
+Quartiles w.r.t. total_co2:
+```{r}
+total_co2_quartiles <- svyquantile(~total_co2, svy_good, seq(from=0.25, to=0.75, by=0.25))
+
+svy_good <- update(svy_good, 
+                   total_co2_quartile = factor(1 + findInterval(total_co2, total_co2_quartiles)))
+```
+Quartiles w.r.t. per_capita_co2:
+```{r}
+per_capita_co2_quartiles <- svyquantile(~per_capita_co2, svy_good, seq(from=0.25, to=0.75, by=0.25))
+
+svy_good <- update(svy_good, 
+                   per_capita_co2_quartile = factor(1 + findInterval(per_capita_co2, per_capita_co2_quartiles)))
+```
+
+
+## Limitations 
+
+### Imputation of households with dual fuels
+
+Here are some statistics that differ between single and dual fuellers. The ratio we derive from the single bill ratio and use to split the dual bills is however in good accordance with data from official sources.
+
+```{r}
+rn = c("Separate Bills", "Dual Fuel")
+lenr = length(rn)
+cn = c("eq. income", "# pax", "# kids", "# bedrooms", "% oil heating")
+lenc = length(cn)
+
+
+S_cont <- svyby(~ eq_income / i_hhsize / i_nkids_dv / i_hsbeds / i_fuelhave3, ~hh_duelxp, svy_all, svymean, na.rm = T)
+# Initialize table
+tab <- sprintf("%i (%i)", round(S_cont[,2]), round(S_cont[,2+lenc]))
+# Add rows
+for (i in 3:5){
+  tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,i], S_cont[,i+lenc]))
+}
+i=i+1
+  tab <- cbind(tab, sprintf("%.2f (%.2f)", 100 * S_cont[,i], 100 *  S_cont[,i+lenc]))
+
+ptab <- matrix(tab,lenr, length(cn),dimnames=list(rn,cn))
+ptab
+```
+Latex table
+```{r eval=FALSE}
+library("xtable")
+xtable(ptab,
+       caption = "Comparison of relevant characteristics of households with and without dual fuel deal.\\label{tab:comp_dualfuel}")
+```
+
+### Other fuels
+We did not consider emissions from other fuels in future work. The expenditure on those fuels is comparatively small. Nevertheless, it might be interesting to study those in future work.
+```{r}
+sum(df1$i_xpsfly, na.rm=T) / 
+  (sum(df1$i_xpelecy, na.rm=T) + sum(df1$i_xpoily, na.rm=T) + sum(df1$i_xpgasy, na.rm=T))
+```
+
+
+### Subset bias
+
+Our process of selecting the subset of good people introduces bias into the dataset.
+
+Here is a table showing differences betweens some of the regressors for the used subset and the  dropped values.
+
+```{r}
+rn = c("Dropout", "Used Subset", "Complete Survey")
+lenr = length(rn)
+cn = c("eq. income", "# pax", "# kids", "# bedrooms", "% oil heating")
+lenc = length(cn)
+
+rowform = ~eq_income / i_hhsize / i_nkids_dv / i_hsbeds / i_fuelhave3 
+
+S_cont <- svyby(rowform, ~good, svy_all, svymean, na.rm = T)
+S_ext <- svyby(rowform, ~I(1), svy_all, svymean, na.rm = T)
+names(S_ext)[1] <- "good"
+S_cont <- rbind(S_cont,S_ext)
+# Initialize table
+tab <- sprintf("%i (%i)", round(S_cont[,2]), round(S_cont[,2+lenc]))
+# Add rows
+for (i in 3:5){
+  tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,i], S_cont[,i+lenc]))
+}
+i=i+1
+tab <- cbind(tab, sprintf("%.2f (%.2f)", 100 * S_cont[,i], 100 * S_cont[,i+lenc]))
+
+ptab <- matrix(tab,lenr, length(cn),dimnames=list(rn,cn))
+ptab
+```
+Latexify
+```{r eval=FALSE}
+xtable(ptab,
+       caption = "Mean (standard deviation) of important variables for the subset of dropped HHs, the subset of used HHs and the whole dataset\\label{tab:comp_dropout}.")
+```
+
+
+Complete comparison table for reference
+
+```{r}
+rowform = ~eq_income / 
+          log(i_fihhmnnet1_dv + 961) /
+          i_hsownd /
+          # Education
+          hh_hiqual /
+          # Region
+          i_gor_dv /
+          i_urban_dv /
+          # Household Size
+          i_hhsize / 
+          I(i_hhsize == 1) /
+          # Household Composition
+          i_nkids_dv /
+          i_nonepar_dv / 
+          i_ncouple_dv / 
+          i_npensioner /
+          i_nue_dv /
+          nfem / 
+          nhcond /
+          i_fborn /
+          # Accommodation 
+          i_hsbeds /
+          i_hsrooms / 
+          as.factor(i_fuelhave3) /
+          i_heatch
+
+S_cont <- svyby(rowform, ~good, svy_all, svymean, na.rm = T)
+S_ext <-svyby(rowform, ~I(1), svy_all, svymean, na.rm = T)
+names(S_ext)[1] <- "good"
+S_cont <- rbind(S_cont,S_ext)
+S_cont[,1:44]
+```
+
+
+
+Total weight of the used subset
+
+```{r}
+svytotal(~good, svy_good)
+```
+
+## Exporting the preprocessed data
+
+This concludes the preprocessing. We export the data for later use in other scripts.
+
+``` {r}
+write_sav(df1, "data/i_hhresp_preprocessed.sav")
+write_sav(dfgood, "data/dfgood.sav")
+saveRDS(svy_all, "data/svy_all.rds")
+saveRDS(svy_good, "data/svy_good.rds")
+```
+
+# References

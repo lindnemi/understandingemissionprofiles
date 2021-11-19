@@ -1,0 +1,700 @@
+---
+title: "Analysis"
+author: "Michael Lindner, Antonia Schuster"
+date: "11/19/2021"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preliminaries: Version control
+
+For exact reproducibility of our results we use the package manager `renv` to keep track of the versions of all packages used.
+
+To reproduce our analysis, install `renv` then use `renv::activate()` to activate the environment specified in the lockfile. You might have to use `renv::hydrate()` to install required packages as well. Afterwards you can run the R code as you would normally do.
+
+# Loading data
+
+We begin by loading the data
+
+```{r message=FALSE}
+library("haven")
+library("dplyr")
+df1 <- read_sav("data/i_hhresp_preprocessed.sav")
+dfgood <- read_sav("data/dfgood.sav")
+svy_all <- readRDS("data/svy_all.rds")
+svy_good <- readRDS("data/svy_good.rds")
+```
+
+# Regressions analysis - Linear Models
+
+We estimate the performance of our regression models by the coefficients of determination $R^2$ and adjusted $R^2$. It characterizes the fraction of variance in the data that can be explained by the model.
+
+Adjusted $R^2$ is a variant that accounts for the fact that the $R^2$ value will always increase when additional predictors are incorporated into the model. It takes into account the degrees of freedom of the model as compared to our null model that always predicts the mean. For a clustered, stratified survey design $M$ clusters and $H$ strata, the design degrees of freedom are $d = M-H$, cf. [@lumley_2019].
+
+```{r message=FALSE}
+library("survey")
+options(survey.lonely.psu = "adjust")
+library("car")
+```
+
+```{r warning=FALSE, message=FALSE}
+total_null_model <- svyglm(total_co2 ~ 1, svy_good, na.exclude(TRUE), family = gaussian())
+total_N <- summary(total_null_model)
+pc_null_model <- svyglm(per_capita_co2 ~ 1, svy_good, na.exclude(TRUE), family = gaussian()) 
+pc_N <- summary(pc_null_model)
+get.model.fit <- function(S, N){
+  Rsq = 1 - (S$dispersion / N$dispersion )
+  adjRsq = 1 - (S$dispersion / (S$df.residual)) / (N$dispersion / (N$df.residual))
+  return(c("R squared" = Rsq, "adjusted R squared" = adjRsq))
+}
+
+```
+## Extended models 
+
+We will start with two models that predict the total CO2 consumption as well as the per capita CO2 consumption of households. Since they contain a large number of predictors we refer to them as "extended models". Many of the significant predictors in these models only marginally increase the explanatory power.
+
+```{r warning=FALSE}
+
+svyglm_extended_total <- svyglm(total_co2 ~
+                                # Wealth
+                                log(i_fihhmnnet1_dv + 961) +
+                                i_hsownd +
+                                # Education
+                                hh_hiqual +
+                                # Region
+                                i_gor_dv +
+                                i_urban_dv +
+                                # Household Size
+                                i_hhsize + 
+                                I(i_hhsize == 1) +
+                                # Household Composition
+                                i_nkids_dv +
+                                i_nonepar_dv + 
+                                i_ncouple_dv + 
+                                i_npensioner +
+                                i_nue_dv +
+                                nfem + 
+                                nhcond +
+                                i_fborn +
+                                # Accommodation 
+                                i_hsbeds +
+                                i_hsrooms + 
+                                as.factor(i_fuelhave3) +
+                                i_heatch,
+                                svy_good, na.exclude(TRUE), family = gaussian())
+
+svyglm_extended_pc <- svyglm(per_capita_co2 ~
+                                # Wealth
+                                log(i_fihhmnnet1_dv + 961) +
+                                i_hsownd +
+                                # Education
+                                hh_hiqual +
+                                # Region
+                                i_gor_dv +
+                                i_urban_dv +
+                                # Household Size
+                                i_hhsize + 
+                                I(i_hhsize == 1) +
+                                # Household Composition
+                                i_nkids_dv +
+                                i_nonepar_dv + 
+                                i_ncouple_dv + 
+                                i_npensioner +
+                                i_nue_dv +
+                                nfem + 
+                                nhcond +
+                                i_fborn +
+                                # Accommodation 
+                                i_hsbeds +
+                                i_hsrooms + 
+                                as.factor(i_fuelhave3) +
+                                i_heatch,
+                                svy_good, na.exclude(TRUE), family = gaussian()) 
+
+```
+
+The command `summary` shows the coefficitens of the model as well as their significance.
+To check for multicollinearity in the predictors `vif` computes variance inflation factors. All VIF factors are below 10 which is commonly used as a thrshold.
+
+Finally the `get.model.fit` function defined above computes the coefficients of determination.
+```{r}
+S <- summary(svyglm_extended_total)
+S
+vif(svyglm_extended_total)
+get.model.fit(S, total_N)
+```
+Same analysis for the PC model:
+
+```{r echo=FALSE}
+
+
+S <- summary(svyglm_extended_pc)
+S
+vif(svyglm_extended_pc)
+get.model.fit(S, pc_N)
+```
+## Reduced Models
+
+The reduced model explains almost the same amount of variance with less predictors. We don't need to look at vif any more since there are less variables than
+in the extended model.
+```{r warning=FALSE}
+svyglm_reduced_total <- svyglm(total_co2 ~
+                                # Wealth
+                                log(i_fihhmnnet1_dv + 961) +
+                                # Household Size
+                                i_hhsize + 
+                                I(i_hhsize == 1) +
+                                # Accommodation 
+                                i_hsbeds +
+                                i_hsrooms + 
+                                as.factor(i_fuelhave3),
+                       svy_good, na.exclude(TRUE), family = gaussian())
+
+svyglm_reduced_pc <- svyglm(per_capita_co2 ~
+                                # Wealth
+                                log(i_fihhmnnet1_dv + 961) +
+                                # Household Size
+                                i_hhsize + 
+                                I(i_hhsize == 1) +
+                                # Accommodation 
+                                i_hsbeds +
+                                i_hsrooms + 
+                                as.factor(i_fuelhave3),
+                           svy_good, na.exclude(TRUE), family = gaussian())
+
+S <- summary(svyglm_reduced_total)
+S
+#vif(svyglm_reduced_total)
+get.model.fit(S, total_N)
+```
+per capita
+```{r warning=FALSE}
+
+S <- summary(svyglm_reduced_pc)
+S
+get.model.fit(S, pc_N)
+```
+## Minimal models without income
+
+To study the effect of income we remove it from the reduced model. It turns out that the additional variable income adds almost no explanatory power to the model when household size and accommodation characteristics are controlled for.
+```{r warning=FALSE}
+svyglm_minimal_total <- svyglm(total_co2 ~
+                                # Household Size
+                                i_hhsize + 
+                                I(i_hhsize == 1) +
+                                # Accommodation 
+                                i_hsbeds +
+                                i_hsrooms + 
+                                as.factor(i_fuelhave3),
+                       svy_good, na.exclude(TRUE), family = gaussian())
+
+svyglm_minimal_pc <- svyglm(per_capita_co2 ~
+                                # Household Size
+                                i_hhsize + 
+                                I(i_hhsize == 1) +
+                                # Accommodation 
+                                i_hsbeds +
+                                i_hsrooms + 
+                                as.factor(i_fuelhave3),
+                           svy_good, na.exclude(TRUE), family = gaussian())
+
+S <- summary(svyglm_minimal_total)
+S
+get.model.fit(S, total_N)
+```
+per capita
+```{r warning=FALSE}
+
+S <- summary(svyglm_minimal_pc)
+S
+get.model.fit(S, pc_N)
+```
+## Large regression table
+Put everything into a nice latex table
+```{r eval=FALSE}
+library("stargazer")
+stargazer(svyglm_extended_total, svyglm_reduced_total, svyglm_minimal_total,
+          svyglm_extended_pc, svyglm_reduced_pc, svyglm_minimal_pc,
+          title="Extended Model Regression Results", 
+          dep.var.labels=c("Household CO2 in kg", "Per Capita CO2 in kg"),
+          covariate.labels=c("Log Income",
+                             # Wealth
+                             "Accommodation owned outright",
+                             "Owned on mortgage",
+                             "Shared ownership", 
+                             "Rented",
+                             # Education
+                             "Academic degree",
+                             "Other higher degree",
+                             "Upper secondary education",
+                             "Lower secondary education",
+                             "Other qualification",
+                             "No qualification",
+                             # Region
+                             "North West",
+                             "Yorkshire and the Humber", 
+                             "East Midlands",   
+                             "West Midlands",
+                             "East of England", 
+                             "London", 
+                             "South East",
+                             "South West", 
+                             "Wales", 
+                             "Scotland", 
+                             "Northern Ireland",
+                             "Rural region",
+                             # Household size
+                             "Number of persons",
+                             "Single household",
+                             # Household composition
+                             "Number of children",
+                             "Number of lone parents",
+                             "Number of couples",
+                             "Number of pensioners",
+                             "Number of unemployed",
+                             "Number of female adults",
+                             "Number with long-standing illness or disability",
+                             "One or more not born in UK",
+                             # Accommodation
+                             "Number of bedrooms",
+                             "Number of other rooms",
+                             "Heating Oil",
+                             "Central heating",
+                             "Constant"),
+          digits = 0, no.space =T)
+```
+
+# Socio-demographic characteristics
+
+
+## Income and house ownership
+```{r}
+
+svyby(~total_co2, ~I(eq_income > 6000), svy_good, svymean)
+```
+
+
+### Income deciles vs CO2 emissions
+
+We compare HH and PC emissions with respect to income deciles.
+```{r}
+
+co2_vs_income_decile = svyby(~per_capita_co2 / total_co2, 
+                             ~eq_income_decile, svy_good, svymean)
+eq_income_vs_income_decile = svyby(~eq_income, 
+                             ~eq_income_decile, svy_good, svymean)
+```
+
+The following plot shows mean CO2 emissions of each income decile.  We see that CO2 emissions are regressively distributed, since a 1% increase in income leads to less than 1 % increase in emissions.
+
+```{r}
+par(mfrow=c(1,2))
+
+plot(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,3],
+     xlab= "Monthly Equivalised Income", 
+     ylab="Household CO2 Emissions in kg",
+     ylim = c(0,8000),
+     col = "red")
+#axis(1, at=1:10, labels = round(eq_income_vs_income_decile$eq_income), las = 2)
+lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,3],
+      col = "red")
+
+abline(h = mean(co2_vs_income_decile[,3]),
+       col = "red", lty = 3)
+
+
+plot(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,2],
+     xlab= "Monthly Equivalised Income", 
+     ylab="Per Capita CO2 Emissions in kg",
+     ylim = c(0,4000),
+     col = "blue")
+lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,2],
+      col = "blue")
+abline(h = mean(co2_vs_income_decile[,2]),
+       col = "blue", lty = 3)
+```
+
+### House Ownership
+
+```{r}
+rn = c("HH CO2 in kg","PC CO2 in kg", "eq. income in POUNDS", "# persons", "# kids")
+cn = c("Owned outright", 
+       "Owned on mortgage",
+       "Shared ownership", 
+       "Rented", 
+       "Rent free")
+
+
+S_cont <- svyby(~total_co2 / per_capita_co2 / eq_income / i_hhsize / i_nkids_dv, 
+                ~i_hsownd, svy_good, svymean)
+
+tab <- sprintf("%i (%i)", round(S_cont[,2]), round(S_cont[,7]))
+for (i in 3:4){
+  tab <- cbind(tab, sprintf("%i (%i)", round(S_cont[,i]), round(S_cont[,i+5])))
+}
+tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,5], S_cont[,5+5]))
+tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,6], S_cont[,6+5]))
+
+ptab <- t(matrix(t(tab),length(rn), 5,dimnames=list(rn,cn)))
+ptab
+```
+```{r eval=FALSE}
+xtable(ptab,
+       size = "\\small",
+       caption = "Mean values (standard deviations) of household (HH) and per capita (PC) annual CO2 emissions in kg, equivalised annual household income in \\pounds, household size and number of kids with respect to ownership status of accomodation. On mortgage could be either owned or being bought. \\label{tab:ownership}")
+```
+
+
+### Split gas and electricity bill
+```{r}
+svymean(~eq_income, svy_good)
+svyby(~eq_income, ~i_fuelduel, svy_good, svymean)
+svyby(~elec_prize, ~eq_income_decile, svy_all, svymean, na.rm=T)
+svyby(~elec_prize, ~eq_income_decile, subset(svy_all,i_fuelduel==2), svymean, na.rm=T)
+```
+## Household size
+```{r}
+
+svyby(~total_co2, ~i_hhsize, svy_good, svymean)
+svyby(~total_co2, ~i_nkids_dv, svy_good, svymean)
+```
+Single pensioner households emit more:
+
+
+
+```{r}
+svyby(~total_co2, ~i_npensioner==1, subset(svy_good, i_hhsize==1), svymean)
+
+
+```
+
+## Regions
+
+```{r}
+rn = c("HH CO2 in kg","PC CO2 in kg", "income in POUNDS", "% oil heating")
+lenr = length(rn)
+cn = c("North East","North West","Yorkshire and the Humber", "East Midlands", 
+       "West Midlands","East of England", "London", "South East",
+       "South West", "Wales", "Scotland", "Northern Ireland")
+
+
+S_cont <- svyby(~total_co2 / per_capita_co2 /   eq_income / i_fuelhave3, ~i_gor_dv, svy_good, svymean)
+
+tab <- sprintf("%i (%i)", round(S_cont[,2]), round(S_cont[,2+lenr]))
+for (i in 3:3){
+  tab <- cbind(tab, sprintf("%i (%i)", round(S_cont[,i]), round(S_cont[,i+lenr])))
+}
+tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,4], S_cont[,4+lenr]))
+tab <- cbind(tab, sprintf("%.2f (%.2f)", 100 * S_cont[,5], 100 * S_cont[,5+lenr]))
+
+ptab <- t(matrix(t(tab),lenr, length(cn),dimnames=list(rn,cn)))
+ptab
+```
+```{r eval=FALSE}
+xtable(ptab,
+       size = "\\small",
+       caption = "Mean values (standard deviations) of household (HH) and per capita (PC) annual CO2 emissions in kg, equivalised annual household income in \\pounds and utilization of heating oil for each government region. \\label{tab:regions}")
+```
+
+### Urban Rural
+```{r}
+svyby(~per_capita_co2 / total_co2 / i_hhsize / i_hsbeds / i_hsrooms, ~i_urban_dv, svy_good, svymean, na.rm=T)
+svyby(~per_capita_co2 / total_co2 / i_hhsize / i_hsbeds / i_hsrooms, ~i_urban_dv, subset(svy_good, i_gor_dv!="Northern Ireland"), svymean,na.rm=T)
+```
+
+# Quartile analysis
+
+
+```{r}
+min(dfgood$total_co2)
+max(dfgood$total_co2)
+svymean(~total_co2, svy_good)
+```
+
+## Summary of basic characteristics (continuous variables)
+
+```{r}
+
+cn = c("lower","middle", "high", "top")
+rn = c("Household CO2", "Per capita CO2", "Net income", "Equivalised income",
+       "Number of persons", "% single households", "Number of bedrooms",
+       "Number of other rooms", "% heating oil")
+
+S_cont <- svyby(~total_co2 /
+                per_capita_co2 /
+                i_fihhmnnet1_dv /
+                eq_income /
+                i_hhsize /
+                I(i_hhsize>1) /
+                i_hsbeds /
+                i_hsrooms /
+                I(i_fuelhave3==1),
+                ~total_co2_quartile, svy_good, svymean, na.rm=T)
+S_cont <- S_cont[,c(1:7, 9:10, 12:18, 20:21, 23)]
+
+col <- sprintf("%i (%i)", as.integer(round(S_cont[1,2:5])),
+               as.integer(round(S_cont[1,11:14])))
+tab <- c(col, sprintf("%.2f (%.2f)", S_cont[1,6:10], S_cont[1,15:19]))
+for (i in 2:nrow(S_cont)){
+  col <- sprintf("%i (%i)", as.integer(round(S_cont[i,2:5])),
+                 as.integer(round(S_cont[i,11:14])))
+  newtab <- c(col, sprintf("%.2f (%.2f)", S_cont[i,6:10], S_cont[i,15:19]))
+
+  tab <- rbind(tab, newtab)
+}
+ptab <- matrix(t(tab),length(rn), 4, dimnames=list(rn,cn))
+ptab
+```
+
+The package `xtable` allows us to turn it into Latex code
+
+```{r eval=FALSE, message=FALSE}
+library("xtable")
+xtable(ptab, caption = "Means (standard deviations) of socio-metabolic profiles in UKs Housing sector at the household level. \\label{tab:hhquartiles}")
+```
+Same for per capita quartiles
+```{r}
+
+cn = c("lower","middle", "high", "top")
+rn = c("Household CO2 in kg", 
+       "Per capita CO2 in kg", 
+       "Net income in \\pounds\\", 
+       "Equivalised income in \\pounds\\",
+       "Number of persons", 
+       "Percentage of single households", 
+       "Number of bedrooms",
+       "Number of other rooms", 
+       "Percentage using heating oil")
+
+S_cont <- svyby(~total_co2 /
+                per_capita_co2 /
+                i_fihhmnnet1_dv /
+                eq_income /
+                i_hhsize /
+                I(i_hhsize>1) /
+                i_hsbeds /
+                i_hsrooms /
+                I(i_fuelhave3==1),
+                ~per_capita_co2_quartile, svy_good, svymean, na.rm=T)
+S_cont <- S_cont[,c(1:7, 9:10, 12:18, 20:21, 23)]
+
+col <- sprintf("%i (%i)", as.integer(round(S_cont[1,2:5])),
+               as.integer(round(S_cont[1,11:14])))
+tab <- c(col, sprintf("%.2f (%.2f)", S_cont[1,6:10], S_cont[1,15:19]))
+for (i in 2:nrow(S_cont)){
+  col <- sprintf("%i (%i)", as.integer(round(S_cont[i,2:5])),
+                 as.integer(round(S_cont[i,11:14])))
+  newtab <- c(col, sprintf("%.2f (%.2f)", S_cont[i,6:10], S_cont[i,15:19]))
+
+  tab <- rbind(tab, newtab)
+}
+ptab <- matrix(t(tab),length(rn), 4, dimnames=list(rn,cn))
+ptab
+```
+
+```{r eval=FALSE}
+xtable(ptab, caption = "Means (standard deviations) of socio-metabolic profiles in UKs Housing sector at per capita level. \\label{tab:PCquartiles}")
+```
+
+
+
+## Extensive quartile tables (quartile -> variable)
+
+To be able to better compare different quartiles to each other we report standardized effect sizes (SES) in the following way: Given a binary characteristic $X$ its mean value $\mu_i(X)$ in the quartile $i$ is computed, i.e. the share of households in quartile $i$ with that characteristic. The SES is then the difference of $\mu_i(X)$ and the estimated poplation mean $mu(X)$, divided by the standard error $se_i(X)$ in quartile $i$. 
+
+$$
+SES_i(X) = \frac{\mu_i(X) - \mu(X)}{se_i(X)}
+$$
+This is similar to the test statistic used for a $t$-test, however since the quartile is a subset of the whole population, a $t$-test can not be straightforwardly applied. In the quartile tables a $|SES| > 2.5$ is designated with $+$ or $-$ , $|SES| > 5$ with $++$ or $--$ and $|SES|  > 10$ with $+++$ or $---$. 
+
+```{r}
+pretty_table <- function(qform, form, rn, cn = c("lower","middle", "high", "top", "pop.")) {
+  # qform - name of quartile vector
+  # form  - name of categorical variable
+  # rn    - rownames
+
+  # multiply by 100 to represent percentages
+
+           
+  S <- svyby(update(form, ~as.factor(.)), 
+             update(qform, ~as.factor(.)), 
+             svy_good, svymean, na.rm=T) %>% select(!1) * 100
+  
+  dim <- ncol(S) / 2 
+  
+  M <- as.data.frame(svymean(update(form, ~as.factor(.)),
+                             svy_good, na.rm=T)) * 100
+  if (dim == 1) {
+    Z <- (S[,1] - M$mean) / S[,2]
+  } else {
+    Z <- sweep(S[,1:dim], 2, M$mean) / S[,(dim+1):(2*dim)]
+  }
+  # copy Z
+  stars <- data.frame(Z)
+  stars[] <-  ""
+  stars[Z > 2.5 & Z < 5] = "+"
+  stars[Z > 5 & Z < 10] = "++"
+  stars[Z > 10] = "+++"
+  stars[Z < -2.5 & Z > -5] = "-"
+  stars[Z < -5 & Z > -10] = "--"
+  stars[Z < -10] = "---"
+  
+  tab <- sprintf("$%.1f \\ (%.1f)^{%s}$", 
+                 S[1,1:(dim)], 
+                 S[1,(1+dim):(2*dim)], 
+                 stars[1,])
+  for (i in 2:nrow(S)){
+    tab <- rbind(tab, sprintf("$%.1f \\ (%.1f)^{%s}$", 
+                              S[i,1:(dim)], 
+                              S[i,(1+dim):(2*dim)],
+                              stars[i,]))
+  }
+  tab <- rbind(tab, sprintf("$%.1f \\ (%.1f)$", M$mean, M$SE))
+  P <- matrix(t(tab),dim,5,dimnames=list(rn,cn))
+  if (dim==2) {
+    return(P[2,,drop=FALSE]) # For factor variables return only second level
+  }
+  return(P)
+}
+```
+
+
+
+# Household Characteristics
+
+
+
+```{r}
+household_table <- function(quartile_formula) {
+  return(rbind(pretty_table(quartile_formula, ~hh_hiqual, 
+                           c("Academic degree", 
+                             "Other higher degree", 
+                             "Upper secondary education",
+                             "Lower secondary education", 
+                             "Other qualification", 
+                             "No qualification",
+                             "Missing `qualification`")),
+              pretty_table(quartile_formula, ~I(i_fborn==1), 
+                           c("Everyone born in UK",
+                             "One or more persons not born in UK")),
+              pretty_table(quartile_formula, ~I(i_hhsize==1),
+                           c("Two or more person household",
+                             "Single household")),
+              pretty_table(quartile_formula, ~I(nfem==0), 
+                           c("One or more female adults",
+                             "No female adults")),
+              pretty_table(quartile_formula, ~I(i_nkids_dv>0),
+                           c("No children", 
+                             "One or more children")),
+              pretty_table(quartile_formula, ~I(i_nonepar_dv>0),
+                           c("No lone parents", 
+                             "One or more lone parents")),
+              pretty_table(quartile_formula, ~I(i_ncouple_dv>0),
+                           c("No couples", 
+                             "One or more couples")),
+              pretty_table(quartile_formula, ~I(i_nue_dv>0),
+                           c("No unemployed", 
+                             "One or more unemployed")),
+              pretty_table(quartile_formula, ~I(i_npensioner>0),
+                           c("No pensioners", 
+                             "One or more pensioners")),
+              pretty_table(quartile_formula, ~I(nhcond>0),
+                           c("No long-standing illness or disability", 
+                             "One or more with long-standing illness or disability"))))
+}
+```
+
+Household quartiles
+```{r}
+hhtab <- household_table(~total_co2_quartile)
+hhtab
+```
+
+Per-Captia quartiles
+```{r}
+pctab <- household_table(~per_capita_co2_quartile)
+pctab
+```
+
+
+```{r eval = FALSE}
+print(xtable(hhtab,
+             size = "\\footnotesize",
+             caption = "Mean (standard deviation) of household-related attributes within household and per capita emission quartiles. A $|SES| > 2.5$ is designated with $^{+}$ or $^{-}$, $|SES| > 5$ with $^{++}$ or $^{--}$ and $|SES| > 10$ with $^{+++}$ or $^{---}$ (see Section \\ref{sec:SES}). \\label{tab:householdattributes}"),
+      type="latex", 
+      sanitize.text.function = identity)
+print(xtable(pctab),
+      type="latex", 
+      sanitize.text.function = identity,
+      only.contents=TRUE,
+      comment=FALSE)
+            
+```
+
+
+## Housing characterisitics
+
+```{r}
+housing_table <- function(quartile_formula) {
+  return(rbind(pretty_table(quartile_formula, ~i_hsownd, 
+                           c("Accommodation owned outright", 
+                             "Owned on mortgage",
+                             "Shared ownership", 
+                             "Rented", 
+                             "Rent free")),
+              pretty_table(quartile_formula, ~i_urban_dv, 
+                           c("Urban area", "Rural area")),
+              pretty_table(quartile_formula, ~i_gor_dv, 
+                           c("North East",
+                             "North West",
+                             "Yorkshire and the Humber", 
+                             "East Midlands", 
+                             "West Midlands",
+                             "East of England", 
+                             "London", 
+                             "South East", 
+                             "South West", 
+                             "Wales",
+                             "Scotland", 
+                             "Northern Ireland")),
+              pretty_table(quartile_formula, ~i_fuelhave3,
+                           c("No heating oil", 
+                             "Heating oil")),
+              pretty_table(quartile_formula, ~i_heatch,
+                           c("No central heating", 
+                             "Central heating")))) 
+}
+```
+Household quartiles
+
+```{r}
+hhtab <- housing_table(~total_co2_quartile)
+hhtab
+```
+
+Per Capita quartiles
+```{r}
+pctab <- housing_table(~per_capita_co2_quartile)
+pctab
+```
+
+
+```{r eval = FALSE}
+print(xtable(hhtab,
+             size = "\\footnotesize",
+             caption = "Mean (standard deviation) of housing-related attributes within household and per capita emission quartiles. A $|SES| > 2.5$ is designated with $^{+}$ or $^{-}$, $|SES| > 5$ with $^{++}$ or $^{--}$ and $|SES| > 10$ with $^{+++}$ or $^{---}$ (see Section \\ref{sec:SES}). \\label{tab:housingattributes}"),
+      type="latex", 
+      sanitize.text.function = identity)
+print(xtable(pctab),
+      type="latex", 
+      sanitize.text.function = identity,
+      only.contents=TRUE,
+      comment=FALSE)
+            
+```
+
