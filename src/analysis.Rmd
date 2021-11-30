@@ -24,6 +24,9 @@ We begin by loading the data
 ```{r message=FALSE}
 library("haven")
 library("dplyr")
+library("survey")
+options(survey.lonely.psu = "adjust")
+library("car")
 df1 <- read_sav("data/i_hhresp_preprocessed.sav")
 dfgood <- read_sav("data/dfgood.sav")
 svy_all <- readRDS("data/svy_all.rds")
@@ -35,12 +38,6 @@ svy_good <- readRDS("data/svy_good.rds")
 We estimate the performance of our regression models by the coefficients of determination $R^2$ and adjusted $R^2$. It characterizes the fraction of variance in the data that can be explained by the model.
 
 Adjusted $R^2$ is a variant that accounts for the fact that the $R^2$ value will always increase when additional predictors are incorporated into the model. It takes into account the degrees of freedom of the model as compared to our null model that always predicts the mean. For a clustered, stratified survey design $M$ clusters and $H$ strata, the design degrees of freedom are $d = M-H$, cf. [@lumley_2019].
-
-```{r message=FALSE}
-library("survey")
-options(survey.lonely.psu = "adjust")
-library("car")
-```
 
 ```{r warning=FALSE, message=FALSE}
 total_null_model <- svyglm(total_co2 ~ 1, svy_good, na.exclude(TRUE), family = gaussian())
@@ -322,7 +319,7 @@ abline(h = mean(co2_vs_income_decile[,2]),
 ### House Ownership
 
 ```{r}
-rn = c("HH CO2 in kg","PC CO2 in kg", "eq. income in POUNDS", "# persons", "# kids")
+rn = c("HH CO2 in kg","PC CO2 in kg", "eq. income in POUNDS", "# persons", "# kids", "# bedrooms")
 cn = c("Owned outright", 
        "Owned on mortgage",
        "Shared ownership", 
@@ -330,23 +327,24 @@ cn = c("Owned outright",
        "Rent free")
 
 
-S_cont <- svyby(~total_co2 / per_capita_co2 / eq_income / i_hhsize / i_nkids_dv, 
-                ~i_hsownd, svy_good, svymean)
+S_cont <- svyby(~total_co2 / per_capita_co2 / eq_income / i_hhsize / i_nkids_dv / i_hsbeds,
+                ~i_hsownd, svy_good, svymean, na.rm=T)
 
-tab <- sprintf("%i (%i)", round(S_cont[,2]), round(S_cont[,7]))
+tab <- sprintf("%i (%i)", round(S_cont[,2]), round(S_cont[,8]))
 for (i in 3:4){
-  tab <- cbind(tab, sprintf("%i (%i)", round(S_cont[,i]), round(S_cont[,i+5])))
+  tab <- cbind(tab, sprintf("%i (%i)", round(S_cont[,i]), round(S_cont[,i+6])))
 }
-tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,5], S_cont[,5+5]))
-tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,6], S_cont[,6+5]))
+tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,5], S_cont[,5+6]))
+tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,6], S_cont[,6+6]))
+tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,7], S_cont[,7+6]))
 
-ptab <- t(matrix(t(tab),length(rn), 5,dimnames=list(rn,cn)))
+ptab <- t(matrix(t(tab),length(rn), length(cn),dimnames=list(rn,cn)))
 ptab
 ```
 ```{r eval=FALSE}
 xtable(ptab,
        size = "\\small",
-       caption = "Mean values (standard deviations) of household (HH) and per capita (PC) annual CO2 emissions in kg, equivalised annual household income in \\pounds, household size and number of kids with respect to ownership status of accomodation. On mortgage could be either owned or being bought. \\label{tab:ownership}")
+       caption = "Mean values (standard deviations) of household (HH) and per capita (PC) annual CO2 emissions in kg, equivalised annual household income in \\pounds, household size, number of kids and number of bedrooms with respect to ownership status of accomodation. \\label{tab:ownership}")
 ```
 
 
