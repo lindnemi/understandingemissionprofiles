@@ -38,6 +38,20 @@ If you want to familiarize yourself with the code we recommend starting by viewi
 
 # Preliminaries: Version control
 
-For exact reproducibility of our results we use the package manager `renv` to keep track of the versions of all packages used.
+For exact reproducibility of our results we use the package manager `renv` to keep track of the versions of all packages used in a so called lockfile.
 
-To reproduce our analysis, install `renv` then use `renv::activate()` to activate the environment specified in the lockfile. You might have to use `renv::hydrate()` to install all required packages as well. Afterwards you can run the R code as you would normally do.
+To reproduce our analysis, install `renv` then use `renv::activate()` to activate the environment specified in the lockfile. You might have to use `renv::hydrate()` to install required packages as well. Afterwards you can run the R code as you would normally do.
+
+You can call `renv::project()` and ``renv::status()` to check whether the correct project is activated and whether it is synchronized with the lockfile.
+
+# Preliminaries: Working directory
+
+All scripts assume that the working directory of your R session is the root directory of this repository. If you are using Rmarkdown and knitr you might need to change the working directory in a setup cell with the command:
+```
+knitr::opts_knit$set(root.dir = "PATH_TO_DIR")
+```
+Where `PATH_TO_DIR` might either be an absolute file system path, or a path relative to your default working directory. If you are using RStudio you might also want to change your default working directory if is not set correctly.
+
+# Prelimnaries: R version
+
+All scripts have been tested with R version 4.1.0. If you are should be seeing unexpected behaviour with another R version, try switching.
