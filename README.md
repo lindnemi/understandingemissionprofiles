@@ -2,7 +2,7 @@
 
 Companion repository for the paper: 
 
- **Whose house is on fire? Identifying socio-demographic and housing characteristics driving differences in the UK household $CO_2$ emissions**
+ **Whose house is on fire? Identifying socio-demographic and housing characteristics driving differences in the UK household CO2 emissions**
 
 *Antonia Schuster, Michael Lindner, Ilona M. Otto*
 
