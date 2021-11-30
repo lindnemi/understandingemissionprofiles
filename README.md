@@ -1,5 +1,9 @@
 # Understanding Emission Profiles
 
+
+[![DOI](https://zenodo.org/badge/433461032.svg)](https://zenodo.org/badge/latestdoi/433461032)
+
+
 Companion repository for the paper: 
 
  **Whose house is on fire? Identifying socio-demographic and housing characteristics driving differences in the UK household CO2 emissions**
