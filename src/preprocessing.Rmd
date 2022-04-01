@@ -298,6 +298,11 @@ gas_elec_xp <- !is.na(df1$i_xpgasy) & df1$i_xpgasy > 0  &
                !is.na(df1$i_xpelecy) & df1$i_xpelecy > 0 &
                !is.na(df1$i_fuelhave4) & df1$i_fuelhave4 == 0  
 
+gas_or_elec_xp <- (!is.na(df1$i_xpgasy) & df1$i_xpgasy > 0  |
+               !is.na(df1$i_xpelecy) & df1$i_xpelecy > 0 ) &
+               !is.na(df1$i_fuelhave4) & df1$i_fuelhave4 == 0 
+
+
 df1[gas_elec_xp,]$gas_ratio <- (df1[gas_elec_xp,]$i_xpgasy / 
                                 (df1[gas_elec_xp,]$i_xpelecy + df1[gas_elec_xp,]$i_xpgasy))
 df1[gas_elec_xp,]$elec_ratio <- 1 - df1[gas_elec_xp,]$gas_ratio
@@ -342,16 +347,59 @@ Total weight
 sum(df1$i_hhdenui_xw)
 ```
 
+### Justification for mean imputation
+
+Mean imputation is the most straightforward and easy to understand imputation strategy, however it has a number of disadvantages compared to other strategies. For example it will reduce the variance of the imputed variable. In our case the variance of the imputed variable before imputation is already small, due to the pronounced peak in the distribution of the electricity to gas ratio at approximately 0.5.
+
+### Stochastic imputation
+
+```{r}
+library(mice) 
+library(dplyr)
+
+dfimp <- df1[!is.na(df1$i_fuelduel),] %>% select(elec_ratio,i_fihhmnnet1_dv,i_hhsize, i_nkids_dv,i_nonepar_dv,i_ncouple_dv,i_npensioner,i_nue_dv,nfem,nhcond,i_hsbeds,i_hsrooms,i_hsownd,hh_hiqual,i_gor_dv,i_urban_dv, i_fborn,i_fuelhave1, i_fuelhave2, i_fuelhave3,i_heatch)
+dfimp <- dfimp[,2:ncol(dfimp)]
+
+dfimp[1:12] <- sapply(dfimp[1:12], haven::zap_labels) 
+dfimp[13:ncol(dfimp)] <- sapply(dfimp[13:ncol(dfimp)], haven::as_factor) 
+  
+
+whereMatrix <- dfimp
+whereMatrix$elec_ratio <- is.na(whereMatrix$elec_ratio)
+whereMatrix[,2:ncol(whereMatrix)] <- FALSE
+
+
+imp<-mice(dfimp, method = "pmm", m=1, where = whereMatrix)
+
+
+
+hist(df1$elec_ratio, breaks=100)      
+hist(imp$imp$elec_ratio[,1], breaks=100)      
+
+
+
+
+var(imp$imp$elec_ratio[,1], na.rm=T)
+var(df1$elec_ratio, na.rm=T)
+
+mean(imp$imp$elec_ratio[,1], na.rm=T)
+mean(df1$elec_ratio, na.rm=T)
+
+
+df1[!is.na(df1$i_fuelduel),]$elec_ratio <- complete(imp)$elec_ratio
+df1$gas_ratio <- 1 - df1$elec_ratio
+```
+
 
 Finally we assign the weighted and differentiated mean splitting ratios to the HHs 
 with duel fuel bill and use that ratio to impute the gas and electricity expenditure.
 
 ```{r}
-df1[hh_duelxp & hh_no_oil,]$elec_ratio <- svymean(~elec_ratio, subset(svy_df, gas_elec_xp & hh_no_oil))[1]
-df1[hh_duelxp & hh_no_oil,]$gas_ratio  <- svymean(~gas_ratio , subset(svy_df, gas_elec_xp & hh_no_oil))[1]
-df1[hh_duelxp & hh_oilhav,]$elec_ratio <- svymean(~elec_ratio, subset(svy_df, gas_elec_xp & hh_oilhav))[1]
-df1[hh_duelxp & hh_oilhav,]$gas_ratio  <- svymean(~gas_ratio , subset(svy_df, gas_elec_xp & hh_oilhav))[1]
-
+# df1[hh_duelxp & hh_no_oil,]$elec_ratio <- svymean(~elec_ratio, subset(svy_df, gas_elec_xp & hh_no_oil))[1]
+# df1[hh_duelxp & hh_no_oil,]$gas_ratio  <- svymean(~gas_ratio , subset(svy_df, gas_elec_xp & hh_no_oil))[1]
+# df1[hh_duelxp & hh_oilhav,]$elec_ratio <- svymean(~elec_ratio, subset(svy_df, gas_elec_xp & hh_oilhav))[1]
+# df1[hh_duelxp & hh_oilhav,]$gas_ratio  <- svymean(~gas_ratio , subset(svy_df, gas_elec_xp & hh_oilhav))[1]
+# 
 df1[hh_duelxp,]$i_xpelecy  <- df1[hh_duelxp,]$i_xpduely * df1[hh_duelxp,]$elec_ratio
 df1[hh_duelxp,]$i_xpgasy   <- df1[hh_duelxp,]$i_xpduely * df1[hh_duelxp,]$gas_ratio
 ```
@@ -366,8 +414,8 @@ svytotal(~I(i_hhdenui_xw > -1), subset(svy_df, gas_elec_xp))
 ```
 The electricity / gas ratio for HH without oil is
 ```{r}
-df1[hh_duelxp & hh_no_oil,]$elec_ratio[1] / df1[hh_duelxp & hh_no_oil,]$gas_ratio[1]
-
+df1[hh_duelxp,]$elec_ratio[1] / df1[hh_duelxp,]$gas_ratio[1]
+df1[gas_elec_xp,]$elec_ratio[1] / df1[gas_elec_xp,]$gas_ratio[1]
 ```
 
 ```{r}
@@ -979,10 +1027,10 @@ svytotal(~good, svy_good)
 This concludes the preprocessing. We export the data for later use in other scripts.
 
 ``` {r}
-write_sav(df1, "data/i_hhresp_preprocessed.sav")
-write_sav(dfgood, "data/dfgood.sav")
-saveRDS(svy_all, "data/svy_all.rds")
-saveRDS(svy_good, "data/svy_good.rds")
+write_sav(df1, "data/i_hhresp_preprocessed_mice.sav")
+write_sav(dfgood, "data/dfgood_mice.sav")
+saveRDS(svy_all, "data/svy_all_mice.rds")
+saveRDS(svy_good, "data/svy_good_mice.rds")
 ```
 
 # References
