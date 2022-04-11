@@ -1,7 +1,7 @@
 ---
 title: "Data Preprocessing"
 author: "Michael Lindner, Antonia Schuster"
-date: "11/19/2021"
+date: "04/11/2022"
 bibliography: bibliography.bib
 output: 
   html_document:
@@ -20,6 +20,8 @@ knitr::opts_chunk$set(echo = TRUE)
 For exact reproducibility of our results we use the package manager `renv` to keep track of the versions of all packages used.
 
 To reproduce our analysis, install `renv` then use `renv::activate()` to activate the environment specified in the lockfile. You might have to use `renv::hydrate()` to install required packages as well. Afterwards you can run the R code as you would normally do.
+
+
 
 # Preprocessing
 
@@ -395,6 +397,11 @@ dev.off()
 
 
 ## Stochastic imputation
+Set seed for reproducibility of randomly generated numbers
+```{r}
+set.seed(5)
+```
+
 
 ```{r}
 library(mice) 
@@ -405,7 +412,7 @@ library(dplyr)
 # AND to not only consider OILHAVE but also XPOILY in mice
 
 # Impute dual fuel households by ratio of people who have elec and gas and
-# reported their expendtiure. Exclude people with "other fuels".
+# reported their expenditure. Exclude people with "other fuels".
 dfimp <- df1[(hh_duelxp | gas_and_elec_xp ) & no_other_fuels,] %>% select(elec_ratio,i_fihhmnnet1_dv,i_hhsize, i_nkids_dv,i_nonepar_dv,i_ncouple_dv,i_npensioner,i_nue_dv,nfem,nhcond,i_hsbeds,i_hsrooms,i_hsownd,hh_hiqual,i_gor_dv,i_urban_dv, i_fborn, i_fuelhave3,i_heatch)
 dfimp <- dfimp[,2:ncol(dfimp)]
 
@@ -1003,7 +1010,7 @@ ptab <- matrix(tab,lenr, length(cn),dimnames=list(rn,cn))
 ptab
 ```
 Latex table
-```{r eval=FALSE}
+```{r}
 library("xtable")
 xtable(ptab,
        caption = "Comparison of relevant characteristics of households with and without dual fuel deal.\\label{tab:comp_dualfuel}")
@@ -1048,7 +1055,7 @@ ptab <- matrix(tab,lenr, length(cn),dimnames=list(rn,cn))
 ptab
 ```
 Latexify
-```{r eval=FALSE}
+```{r}
 xtable(ptab,
        caption = "Mean (standard deviation) of important variables for the subset of dropped HHs, the subset of used HHs and the whole dataset\\label{tab:comp_dropout}.")
 ```
