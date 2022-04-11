@@ -54,7 +54,7 @@ We will use equivalised household net income according to the OECD scale for our
 analysis. Here we add the corresponding column as outlined in the USoc manual.
 
 ```{r}
-df1$eq_income <- (df1$i_fihhmnnet1_dv / df1$i_ieqmoecd_dv) # 12 NAs
+df1$eq_income <- (df1$i_fihhmnnet1_dv / df1$i_ieqmoecd_dv)
 ```
 
 
@@ -64,7 +64,6 @@ df1$eq_income <- (df1$i_fihhmnnet1_dv / df1$i_ieqmoecd_dv) # 12 NAs
 ## Data loading
 ```{r results=FALSE}
 dfi <- read_sav("data/raw/i_indresp.sav")
-names(dfi)
 dfind <- dplyr::select(dfi, i_hidp, pidp, i_health, i_sex_dv, i_aidhh,
                        i_hiqual_dv, i_age_dv)
 rm(dfi)
