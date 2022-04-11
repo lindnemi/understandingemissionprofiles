@@ -1,7 +1,7 @@
 ---
 title: "Data Preprocessing"
 author: "Michael Lindner, Antonia Schuster"
-date: "11/19/2021"
+date: "04/11/2022"
 bibliography: bibliography.bib
 output: 
   html_document:
@@ -20,6 +20,8 @@ knitr::opts_chunk$set(echo = TRUE)
 For exact reproducibility of our results we use the package manager `renv` to keep track of the versions of all packages used.
 
 To reproduce our analysis, install `renv` then use `renv::activate()` to activate the environment specified in the lockfile. You might have to use `renv::hydrate()` to install required packages as well. Afterwards you can run the R code as you would normally do.
+
+
 
 # Preprocessing
 
@@ -54,7 +56,7 @@ We will use equivalised household net income according to the OECD scale for our
 analysis. Here we add the corresponding column as outlined in the USoc manual.
 
 ```{r}
-df1$eq_income <- (df1$i_fihhmnnet1_dv / df1$i_ieqmoecd_dv) # 12 NAs
+df1$eq_income <- (df1$i_fihhmnnet1_dv / df1$i_ieqmoecd_dv)
 ```
 
 
@@ -64,7 +66,6 @@ df1$eq_income <- (df1$i_fihhmnnet1_dv / df1$i_ieqmoecd_dv) # 12 NAs
 ## Data loading
 ```{r results=FALSE}
 dfi <- read_sav("data/raw/i_indresp.sav")
-names(dfi)
 dfind <- dplyr::select(dfi, i_hidp, pidp, i_health, i_sex_dv, i_aidhh,
                        i_hiqual_dv, i_age_dv)
 rm(dfi)
@@ -259,9 +260,39 @@ Finally we can transform all user-defined missing values into NA
 df1 <- user_na_to_na(df1)
 ```
 
+## Assesing some missing data
+
+There are 66 households who did not report on the fuels they use.
+
+```{r}
+# The rowSums are either 0 or 4 which means either all are NA or none
+df1 %>% select(i_fuelhave1,i_fuelhave2, i_fuelhave3, i_fuelhave4) %>% is.na  %>% rowSums %>% unique  # == c(0,4)
+
+no_fueldat <- is.na(df1$i_fuelhave1)
+```
+
+When a household reports spending on gas and electricity separately they should be
+considered to receive separate bills.
+```{r}
+gas_and_elec_xp <- !is.na(df1$i_xpgasy) & df1$i_xpgasy > 0  &
+               !is.na(df1$i_xpelecy) & df1$i_xpelecy > 0
+
+df1$i_fuelduel[gas_and_elec_xp] <- 2 # applies to 5 households
 
 
-## Imputing duel fuel gas to electricity ratio
+
+# Some checks
+sum(is.na(df1$i_xpelecy) & is.na(df1$i_xpgasy) & df1$i_fuelduel == 2, na.rm=T) / sum(df1$i_fuelduel == 2, na.rm=T)
+
+sum(is.na(df1$i_xpelecy) & is.na(df1$i_xpgasy))
+
+df1$i_fuelduel %>% is.na %>% sum
+```
+
+
+
+
+## Imputing duel fuel gas to electricity ratio with nean imputation
 
 Many  households (HHs) have a combined gas and electricity bill. They reported
 only the combined expenditure and hence direct conversion of
@@ -294,13 +325,16 @@ These households are removed later on anyhow because we can't reliably estimate 
 since we lack a conversion factor for other fuels.
 
 ```{r}
-gas_elec_xp <- !is.na(df1$i_xpgasy) & df1$i_xpgasy > 0  &
-               !is.na(df1$i_xpelecy) & df1$i_xpelecy > 0 &
-               !is.na(df1$i_fuelhave4) & df1$i_fuelhave4 == 0  
+no_other_fuels <- !is.na(df1$i_fuelhave4) & df1$i_fuelhave4 == 0 
 
-df1[gas_elec_xp,]$gas_ratio <- (df1[gas_elec_xp,]$i_xpgasy / 
-                                (df1[gas_elec_xp,]$i_xpelecy + df1[gas_elec_xp,]$i_xpgasy))
-df1[gas_elec_xp,]$elec_ratio <- 1 - df1[gas_elec_xp,]$gas_ratio
+
+gas_or_elec_xp <- (!is.na(df1$i_xpgasy) & df1$i_xpgasy > 0  |
+               !is.na(df1$i_xpelecy) & df1$i_xpelecy > 0 ) & no_other_fuels 
+
+
+df1[gas_and_elec_xp,]$gas_ratio <- (df1[gas_and_elec_xp,]$i_xpgasy / 
+                                (df1[gas_and_elec_xp,]$i_xpelecy + df1[gas_and_elec_xp,]$i_xpgasy))
+df1[gas_and_elec_xp,]$elec_ratio <- 1 - df1[gas_and_elec_xp,]$gas_ratio
 ```
 
 Further we differentiate between HHs with and without oil as additional energy source and 
@@ -342,36 +376,117 @@ Total weight
 sum(df1$i_hhdenui_xw)
 ```
 
+### Justification for mean imputation
 
-Finally we assign the weighted and differentiated mean splitting ratios to the HHs 
-with duel fuel bill and use that ratio to impute the gas and electricity expenditure.
+Mean imputation is the most straightforward and easy to understand imputation strategy, however it has a number of disadvantages compared to other strategies. For example it will reduce the variance of the imputed variable. In our case the variance of the imputed variable before imputation is already small, due to the pronounced peak in the distribution of the electricity to gas ratio at approximately 0.5.
+
 
 ```{r}
-df1[hh_duelxp & hh_no_oil,]$elec_ratio <- svymean(~elec_ratio, subset(svy_df, gas_elec_xp & hh_no_oil))[1]
-df1[hh_duelxp & hh_no_oil,]$gas_ratio  <- svymean(~gas_ratio , subset(svy_df, gas_elec_xp & hh_no_oil))[1]
-df1[hh_duelxp & hh_oilhav,]$elec_ratio <- svymean(~elec_ratio, subset(svy_df, gas_elec_xp & hh_oilhav))[1]
-df1[hh_duelxp & hh_oilhav,]$gas_ratio  <- svymean(~gas_ratio , subset(svy_df, gas_elec_xp & hh_oilhav))[1]
 
+pdf("plots/elec_ratio.pdf",10,7)
+par(cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5)
+hist(df1[ gas_and_elec_xp & no_other_fuels,]$elec_ratio, 
+     breaks=100,
+     xlab = "Electricity to combined expenditure ratio",
+     main = "")
+dev.off()
+# hist(df1[ gas_and_elec_xp & no_other_fuels,]$total_co2, breaks=100)
+# hist(df1[ hh_duelxp & no_other_fuels,]$elec_ratio, breaks=100)
+# hist(df1[ hh_duelxp & no_other_fuels,]$total_co2, breaks=100)
+```
+
+
+## Stochastic imputation
+Set seed for reproducibility of randomly generated numbers
+```{r}
+set.seed(5)
+```
+
+
+```{r}
+library(mice) 
+library(dplyr)
+
+# It might be worthwhile to exclude hhs with incomplete oil expenditure
+# sum((hh_duelxp | gas_and_elec_xp ) & no_other_fuels & !unknown_oil & !zero_oil , na.rm=T)
+# AND to not only consider OILHAVE but also XPOILY in mice
+
+# Impute dual fuel households by ratio of people who have elec and gas and
+# reported their expenditure. Exclude people with "other fuels".
+dfimp <- df1[(hh_duelxp | gas_and_elec_xp ) & no_other_fuels,] %>% select(elec_ratio,i_fihhmnnet1_dv,i_hhsize, i_nkids_dv,i_nonepar_dv,i_ncouple_dv,i_npensioner,i_nue_dv,nfem,nhcond,i_hsbeds,i_hsrooms,i_hsownd,hh_hiqual,i_gor_dv,i_urban_dv, i_fborn, i_fuelhave3,i_heatch)
+dfimp <- dfimp[,2:ncol(dfimp)]
+
+
+dfimp[1:12] <- zap_labels(dfimp[1:12])
+dfimp[13:ncol(dfimp)] <- droplevels( as_factor(dfimp[13:ncol(dfimp)]))
+
+# This is one way to specify that only elec_ratio should be imputed
+# whereMatrix <- dfimp
+# whereMatrix$elec_ratio <- is.na(whereMatrix$elec_ratio)
+# whereMatrix[,2:ncol(whereMatrix)] <- FALSE
+
+# Drop predictors with missing data (the most important one (oil) has no missings)
+dfimp <- cbind.data.frame(dfimp[1], dfimp[,colSums(is.na(dfimp)) == 0])
+
+
+
+imp <- mice(dfimp, method = "pmm", m=1)#, where = whereMatrix)
+
+
+# hist(df1$elec_ratio, breaks=100)      
+# hist(imp$imp$elec_ratio[,1], breaks=100)      
+
+
+var(imp$imp$elec_ratio[,1], na.rm=T)
+var(imp$data$elec_ratio, na.rm=T)
+
+mean(imp$imp$elec_ratio[,1], na.rm=T)
+mean(imp$data$elec_ratio, na.rm=T)
+```
+
+
+```{r}
+df1[(hh_duelxp | gas_and_elec_xp ) & no_other_fuels,]$elec_ratio <- complete(imp)$elec_ratio
+df1$gas_ratio <- 1 - df1$elec_ratio
+```
+
+
+Finally we assign the weighted and differentiated mean splitting ratios, to the HHs 
+with duel fuel bill and use that ratio to impute the gas and electricity expenditure.
+For the stochastic imputation we use the ratio from mice directly.
+
+```{r}
+# Only for mean imputation strategy
+# df1[hh_duelxp & hh_no_oil,]$elec_ratio <- svymean(~elec_ratio, subset(svy_df, gas_and_elec_xp & hh_no_oil & no_other_fuels))[1]
+# df1[hh_duelxp & hh_no_oil,]$gas_ratio  <- svymean(~gas_ratio , subset(svy_df, gas_and_elec_xp & hh_no_oil & no_other_fuels))[1]
+# df1[hh_duelxp & hh_oilhav& no_other_fuels,]$elec_ratio <- svymean(~elec_ratio, subset(svy_df, gas_and_elec_xp & hh_oilhav))[1]
+# df1[hh_duelxp & hh_oilhav& no_other_fuels,]$gas_ratio  <- svymean(~gas_ratio , subset(svy_df, gas_and_elec_xp & hh_oilhav))[1]
+
+
+# For mean and stochastic imputation
 df1[hh_duelxp,]$i_xpelecy  <- df1[hh_duelxp,]$i_xpduely * df1[hh_duelxp,]$elec_ratio
 df1[hh_duelxp,]$i_xpgasy   <- df1[hh_duelxp,]$i_xpduely * df1[hh_duelxp,]$gas_ratio
 ```
 
 The total weight of all households for which we estimate the ratio is
 ```{r}
-svytotal(~I(i_hhdenui_xw > -1), subset(svy_df, hh_duelxp))
+svytotal(~I(i_hhdenui_xw > -1), subset(svy_df, hh_duelxp & no_other_fuels))
 ```
 ... and for HH for which the ratio is available in the data.
 ```{r}
-svytotal(~I(i_hhdenui_xw > -1), subset(svy_df, gas_elec_xp))
+svytotal(~I(i_hhdenui_xw > -1), subset(svy_df, gas_and_elec_xp & no_other_fuels))
 ```
 The electricity / gas ratio for HH without oil is
 ```{r}
-df1[hh_duelxp & hh_no_oil,]$elec_ratio[1] / df1[hh_duelxp & hh_no_oil,]$gas_ratio[1]
 
+
+
+mean(df1[hh_duelxp & no_other_fuels,]$elec_ratio / df1[hh_duelxp & no_other_fuels,]$gas_ratio)
+mean(df1[gas_and_elec_xp& no_other_fuels & hh_no_oil,]$elec_ratio / df1[gas_and_elec_xp& no_other_fuels & hh_no_oil,]$gas_ratio)
 ```
 
 ```{r}
-df1[hh_duelxp & hh_oilhav,]$elec_ratio[1] / df1[hh_duelxp & hh_oilhav,]$gas_ratio[1]
+df1[hh_duelxp & hh_oilhav,]$elec_ratio / df1[hh_duelxp & hh_oilhav,]$gas_ratio
 ```
 The total mean of elec to gas for the dataset is
 ```{r}
@@ -656,7 +771,9 @@ electricity, gas or oil have been considered
 
 ```{r}
 sum(df1$i_xpgasy > 0 | df1$i_xpelecy > 0 | 
-    df1$i_xpoily > 0 | df1$i_xpduely > 0, na.rm=T) == sum(df1$total_co2 > 0, na.rm=T)
+    df1$i_xpoily > 0 | df1$i_xpduely > 0 & no_other_fuels, na.rm=T) == sum(df1$total_co2 > 0, na.rm=T)
+
+
 ```
 
 
@@ -714,21 +831,33 @@ in further analyses since the total expenditure of other fuels is small compared
 of gas, oil and electricity.
 
 ```{r}
-unknown_fuels = !is.na(df1$i_fuelhave4) & df1$i_fuelhave4 == 1
+other_fuels = !is.na(df1$i_fuelhave4) & df1$i_fuelhave4 == 1
 ```
 
 We further exclude HH that have a certain fuel but don't specify how much they spent on it.
 They might have their own solar panels or an oil well, which would imply
 vastly different CO2 emissions.
 ```{r}
-unknown_elec = !is.na(df1$i_fuelhave1) & df1$i_fuelhave1 == 1 &
+zero_elec = !is.na(df1$i_fuelhave1) & df1$i_fuelhave1 == 1 &
                !is.na(df1$i_xpelecy) & df1$i_xpelecy == 0
 
-unknown_gas = !is.na(df1$i_fuelhave2) & df1$i_fuelhave2 == 1 &
+zero_gas = !is.na(df1$i_fuelhave2) & df1$i_fuelhave2 == 1 &
               !is.na(df1$i_xpgasy) & df1$i_xpgasy == 0
 
-unknown_oil = !is.na(df1$i_fuelhave3) & df1$i_fuelhave3 == 1 &
+zero_oil = !is.na(df1$i_fuelhave3) & df1$i_fuelhave3 == 1 &
               !is.na(df1$i_xpoily) & df1$i_xpoily == 0
+
+
+unknown_elec = !is.na(df1$i_fuelhave1) & df1$i_fuelhave1 == 1 &
+               is.na(df1$i_xpelecy) 
+
+unknown_gas = !is.na(df1$i_fuelhave2) & df1$i_fuelhave2 == 1 &
+              is.na(df1$i_xpgasy)
+
+unknown_oil = !is.na(df1$i_fuelhave3) & df1$i_fuelhave3 == 1 &
+              is.na(df1$i_xpoily)
+
+
 ```
 
 Finally there are some HHs for which we couldn't estimate CO2 emission due to lacking data
@@ -739,19 +868,21 @@ unknown_co2 = is.na(df1$total_co2)
 HHs that fall into none of these categories are "good".
 
 ```{r}
-known_people = !(unknown_fuels | unknown_elec | unknown_gas | unknown_oil | 
-                unknown_co2)
+known_people = !(other_fuels | zero_elec | zero_gas | zero_oil| unknown_elec | unknown_gas | unknown_oil | unknown_co2)
 ```
 
 Let's have a look at how much HHs belong into each category.
 
 ```{r}
-sum(unknown_fuels)
+sum(other_fuels)
 sum(unknown_elec)
 sum(unknown_gas)
 sum(unknown_oil)
+sum(zero_elec)
+sum(zero_gas)
+sum(zero_oil)
 sum(unknown_co2)
-sum(known_people)
+sum(!known_people)
 ```
 
 ## Regularization
@@ -865,7 +996,7 @@ cn = c("eq. income", "# pax", "# kids", "# bedrooms", "% oil heating")
 lenc = length(cn)
 
 
-S_cont <- svyby(~ eq_income / i_hhsize / i_nkids_dv / i_hsbeds / i_fuelhave3, ~hh_duelxp, svy_all, svymean, na.rm = T)
+S_cont <- svyby(~ eq_income / i_hhsize / i_nkids_dv / i_hsbeds / i_fuelhave3, ~I(i_fuelduel==1), svy_all, svymean, na.rm = T)
 # Initialize table
 tab <- sprintf("%i (%i)", round(S_cont[,2]), round(S_cont[,2+lenc]))
 # Add rows
@@ -879,14 +1010,14 @@ ptab <- matrix(tab,lenr, length(cn),dimnames=list(rn,cn))
 ptab
 ```
 Latex table
-```{r eval=FALSE}
+```{r}
 library("xtable")
 xtable(ptab,
        caption = "Comparison of relevant characteristics of households with and without dual fuel deal.\\label{tab:comp_dualfuel}")
 ```
 
 ### Other fuels
-We did not consider emissions from other fuels in future work. The expenditure on those fuels is comparatively small. Nevertheless, it might be interesting to study those in future work.
+We did not consider emissions from other fuels. The expenditure on those fuels is comparatively small. Nevertheless, it might be interesting to study those in future work.
 ```{r}
 sum(df1$i_xpsfly, na.rm=T) / 
   (sum(df1$i_xpelecy, na.rm=T) + sum(df1$i_xpoily, na.rm=T) + sum(df1$i_xpgasy, na.rm=T))
@@ -902,10 +1033,10 @@ Here is a table showing differences betweens some of the regressors for the used
 ```{r}
 rn = c("Dropout", "Used Subset", "Complete Survey")
 lenr = length(rn)
-cn = c("eq. income", "# pax", "# kids", "# bedrooms", "% oil heating")
+cn = c("eq. income", "# pax",  "# bedrooms", "% oil heating")
 lenc = length(cn)
 
-rowform = ~eq_income / i_hhsize / i_nkids_dv / i_hsbeds / i_fuelhave3 
+rowform = ~eq_income / i_hhsize / i_hsbeds / i_fuelhave3 
 
 S_cont <- svyby(rowform, ~good, svy_all, svymean, na.rm = T)
 S_ext <- svyby(rowform, ~I(1), svy_all, svymean, na.rm = T)
@@ -914,7 +1045,7 @@ S_cont <- rbind(S_cont,S_ext)
 # Initialize table
 tab <- sprintf("%i (%i)", round(S_cont[,2]), round(S_cont[,2+lenc]))
 # Add rows
-for (i in 3:5){
+for (i in 3:4){
   tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,i], S_cont[,i+lenc]))
 }
 i=i+1
@@ -924,7 +1055,7 @@ ptab <- matrix(tab,lenr, length(cn),dimnames=list(rn,cn))
 ptab
 ```
 Latexify
-```{r eval=FALSE}
+```{r}
 xtable(ptab,
        caption = "Mean (standard deviation) of important variables for the subset of dropped HHs, the subset of used HHs and the whole dataset\\label{tab:comp_dropout}.")
 ```
@@ -934,6 +1065,7 @@ Complete comparison table for reference
 
 ```{r}
 rowform = ~eq_income / 
+          total_co2 /
           log(i_fihhmnnet1_dv + 961) /
           i_hsownd /
           # Education
@@ -963,7 +1095,7 @@ S_cont <- svyby(rowform, ~good, svy_all, svymean, na.rm = T)
 S_ext <-svyby(rowform, ~I(1), svy_all, svymean, na.rm = T)
 names(S_ext)[1] <- "good"
 S_cont <- rbind(S_cont,S_ext)
-S_cont[,1:44]
+S_cont
 ```
 
 
@@ -971,7 +1103,9 @@ S_cont[,1:44]
 Total weight of the used subset
 
 ```{r}
-svytotal(~good, svy_good)
+sum(good_people)
+svytotal(~good, svy_good, na.rm=T)
+svytotal(~I(i_fuelduel==1), svy_good, na.rm=T)
 ```
 
 ## Exporting the preprocessed data
@@ -979,10 +1113,10 @@ svytotal(~good, svy_good)
 This concludes the preprocessing. We export the data for later use in other scripts.
 
 ``` {r}
-write_sav(df1, "data/i_hhresp_preprocessed.sav")
-write_sav(dfgood, "data/dfgood.sav")
-saveRDS(svy_all, "data/svy_all.rds")
-saveRDS(svy_good, "data/svy_good.rds")
+write_sav(df1, "data/i_hhresp_preprocessed_mice.sav")
+write_sav(dfgood, "data/dfgood_mice.sav")
+saveRDS(svy_all, "data/svy_all_mice.rds")
+saveRDS(svy_good, "data/svy_good_mice.rds")
 ```
 
 # References

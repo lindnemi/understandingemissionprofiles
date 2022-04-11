@@ -1,6 +1,6 @@
 {
   "R": {
-    "Version": "4.1.0",
+    "Version": "4.1.3",
     "Repositories": [
       {
         "Name": "CRAN",
@@ -352,6 +352,13 @@
       "Repository": "CRAN",
       "Hash": "89fd8b2ad4a6cb4979b78cf2a77ab503"
     },
+    "mice": {
+      "Package": "mice",
+      "Version": "3.14.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "437fa44664cf8e2dd07b9a70ec65d969"
+    },
     "mime": {
       "Package": "mime",
       "Version": "0.11",
@@ -589,6 +596,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "ecf749a1b39ea72bd9b51b76292261f1"
+    },
+    "withr": {
+      "Package": "withr",
+      "Version": "2.4.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "ad03909b44677f930fa156d47d7a3aeb"
     },
     "xfun": {
       "Package": "xfun",
