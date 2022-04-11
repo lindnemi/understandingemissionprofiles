@@ -27,11 +27,34 @@ library("dplyr")
 library("survey")
 options(survey.lonely.psu = "adjust")
 library("car")
-df1 <- read_sav("data/i_hhresp_preprocessed.sav")
-dfgood <- read_sav("data/dfgood.sav")
-svy_all <- readRDS("data/svy_all.rds")
-svy_good <- readRDS("data/svy_good.rds")
+library("xtable")
+library("stargazer")
+
+# df1 <- read_sav("data/i_hhresp_preprocessed.sav")
+# dfgood <- read_sav("data/dfgood.sav")
+# svy_all <- readRDS("data/svy_all.rds")
+# svy_good <- readRDS("data/svy_good.rds")
+
+df1 <- read_sav("data/i_hhresp_preprocessed_mice.sav")
+dfgood <- read_sav("data/dfgood_mice.sav")
+svy_all <- readRDS("data/svy_all_mice.rds")
+svy_good <- readRDS("data/svy_good_mice.rds")
 ```
+# Correlation of income and living space
+
+```{r}
+svyvar(i_hhsize ~ i_fihhmnnet1_dv, svy_good, na.rm=T) %>% as.matrix %>% cov2cor
+
+svyvar(i_hhsize ~ eq_income, svy_good, na.rm=T) %>% as.matrix %>% cov2cor
+svyvar(i_hhsize ~ i_hsbeds, svy_good, na.rm=T) %>% as.matrix %>% cov2cor
+
+svyvar(i_hsbeds ~ eq_income, svy_good, na.rm=T) %>% as.matrix %>% cov2cor
+
+
+```
+
+
+
 
 # Regressions analysis - Linear Models
 
@@ -213,7 +236,7 @@ get.model.fit(S, pc_N)
 ```
 ## Large regression table
 Put everything into a nice latex table
-```{r eval=FALSE}
+```{r eval=TRUE}
 library("stargazer")
 stargazer(svyglm_extended_total, svyglm_reduced_total, svyglm_minimal_total,
           svyglm_extended_pc, svyglm_reduced_pc, svyglm_minimal_pc,
@@ -290,7 +313,10 @@ eq_income_vs_income_decile = svyby(~eq_income,
 The following plot shows mean CO2 emissions of each income decile.  We see that CO2 emissions are regressively distributed, since a 1% increase in income leads to less than 1 % increase in emissions.
 
 ```{r}
-par(mfrow=c(1,2))
+pdf("plots/income_vs_co2_mice.pdf", 14, 7)
+
+
+par(mfrow=c(1,2), pty="s", cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5, lwd=1.5)
 
 plot(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,3],
      xlab= "Monthly Equivalised Income", 
@@ -314,12 +340,14 @@ lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,2],
       col = "blue")
 abline(h = mean(co2_vs_income_decile[,2]),
        col = "blue", lty = 3)
+
+dev.off()
 ```
 
 ### House Ownership
 
 ```{r}
-rn = c("HH CO2 in kg","PC CO2 in kg", "eq. income in POUNDS", "# persons", "# kids", "# bedrooms")
+rn = c("HH CO2 in kg","PC CO2 in kg", "eq. income in POUNDS", "# persons", "# kids", "# pensioners", "# bedrooms")
 cn = c("Owned outright", 
        "Owned on mortgage",
        "Shared ownership", 
@@ -327,24 +355,25 @@ cn = c("Owned outright",
        "Rent free")
 
 
-S_cont <- svyby(~total_co2 / per_capita_co2 / eq_income / i_hhsize / i_nkids_dv / i_hsbeds,
+S_cont <- svyby(~total_co2 / per_capita_co2 / eq_income / i_hhsize / i_nkids_dv / i_npensioner / i_hsbeds,
                 ~i_hsownd, svy_good, svymean, na.rm=T)
 
-tab <- sprintf("%i (%i)", round(S_cont[,2]), round(S_cont[,8]))
+tab <- sprintf("%i (%i)", round(S_cont[,2]), round(S_cont[,9]))
 for (i in 3:4){
-  tab <- cbind(tab, sprintf("%i (%i)", round(S_cont[,i]), round(S_cont[,i+6])))
+  tab <- cbind(tab, sprintf("%i (%i)", round(S_cont[,i]), round(S_cont[,i+7])))
 }
-tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,5], S_cont[,5+6]))
-tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,6], S_cont[,6+6]))
-tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,7], S_cont[,7+6]))
+tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,5], S_cont[,5+7]))
+tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,6], S_cont[,6+7]))
+tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,7], S_cont[,7+7]))
+tab <- cbind(tab, sprintf("%.2f (%.2f)", S_cont[,8], S_cont[,8+7]))
 
 ptab <- t(matrix(t(tab),length(rn), length(cn),dimnames=list(rn,cn)))
 ptab
 ```
-```{r eval=FALSE}
+```{r eval=TRUE}
 xtable(ptab,
        size = "\\small",
-       caption = "Mean values (standard deviations) of household (HH) and per capita (PC) annual CO2 emissions in kg, equivalised annual household income in \\pounds, household size, number of kids and number of bedrooms with respect to ownership status of accomodation. \\label{tab:ownership}")
+       caption = "Mean values (standard deviations) of household (HH) and per capita (PC) annual CO2 emissions in kg, equivalised annual household income in \\pounds, household size, number of kids, number of pensioners and number of bedrooms with respect to ownership status of accomodation. \\label{tab:ownership}")
 ```
 
 
@@ -393,10 +422,13 @@ tab <- cbind(tab, sprintf("%.2f (%.2f)", 100 * S_cont[,5], 100 * S_cont[,5+lenr]
 ptab <- t(matrix(t(tab),lenr, length(cn),dimnames=list(rn,cn)))
 ptab
 ```
-```{r eval=FALSE}
+```{r eval=TRUE}
 xtable(ptab,
        size = "\\small",
        caption = "Mean values (standard deviations) of household (HH) and per capita (PC) annual CO2 emissions in kg, equivalised annual household income in \\pounds and utilization of heating oil for each government region. \\label{tab:regions}")
+```
+```{r}
+svyby(~i_fuelhave3, ~I(i_gor_dv=="Northern Ireland"), svy_good, svymean, na.rm=T)
 ```
 
 ### Urban Rural
@@ -451,7 +483,7 @@ ptab
 
 The package `xtable` allows us to turn it into Latex code
 
-```{r eval=FALSE, message=FALSE}
+```{r eval=TRUE, message=FALSE}
 library("xtable")
 xtable(ptab, caption = "Means (standard deviations) of socio-metabolic profiles in UKs Housing sector at the household level. \\label{tab:hhquartiles}")
 ```
@@ -461,8 +493,8 @@ Same for per capita quartiles
 cn = c("lower","middle", "high", "top")
 rn = c("Household CO2 in kg", 
        "Per capita CO2 in kg", 
-       "Net income in \\pounds\\", 
-       "Equivalised income in \\pounds\\",
+       "Net income in \\pounds", 
+       "Equivalised income in \\pounds",
        "Number of persons", 
        "Percentage of single households", 
        "Number of bedrooms",
@@ -495,7 +527,7 @@ ptab <- matrix(t(tab),length(rn), 4, dimnames=list(rn,cn))
 ptab
 ```
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 xtable(ptab, caption = "Means (standard deviations) of socio-metabolic profiles in UKs Housing sector at per capita level. \\label{tab:PCquartiles}")
 ```
 
@@ -726,3 +758,4 @@ print(xtable(pctab,
       sanitize.text.function = identity)
 
             
+```
