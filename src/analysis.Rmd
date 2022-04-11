@@ -609,24 +609,24 @@ household_table <- function(quartile_formula) {
 
 Household quartiles
 ```{r}
-hhtab <- household_table(~total_co2_quartile)
-hhtab
+hhtab_household <- household_table(~total_co2_quartile)
+hhtab_household
 ```
 
 Per-Captia quartiles
 ```{r}
-pctab <- household_table(~per_capita_co2_quartile)
-pctab
+pctab_household <- household_table(~per_capita_co2_quartile)
+pctab_household
 ```
 
 
-```{r eval = FALSE}
-print(xtable(hhtab,
+```{r eval=TRUE}
+print(xtable(hhtab_household,
              size = "\\footnotesize",
              caption = "Mean (standard deviation) of household-related attributes within household and per capita emission quartiles. A $|SES| > 2.5$ is designated with $^{+}$ or $^{-}$, $|SES| > 5$ with $^{++}$ or $^{--}$ and $|SES| > 10$ with $^{+++}$ or $^{---}$ (see Section \\ref{sec:SES}). \\label{tab:householdattributes}"),
       type="latex", 
       sanitize.text.function = identity)
-print(xtable(pctab),
+print(xtable(pctab_household),
       type="latex", 
       sanitize.text.function = identity,
       only.contents=TRUE,
@@ -671,24 +671,24 @@ housing_table <- function(quartile_formula) {
 Household quartiles
 
 ```{r}
-hhtab <- housing_table(~total_co2_quartile)
-hhtab
+hhtab_housing <- housing_table(~total_co2_quartile)
+hhtab_housing
 ```
 
 Per Capita quartiles
 ```{r}
-pctab <- housing_table(~per_capita_co2_quartile)
-pctab
+pctab_housing <- housing_table(~per_capita_co2_quartile)
+pctab_housing
 ```
 
 
-```{r eval = FALSE}
-print(xtable(hhtab,
+```{r eval=TRUE}
+print(xtable(hhtab_housing,
              size = "\\footnotesize",
              caption = "Mean (standard deviation) of housing-related attributes within household and per capita emission quartiles. A $|SES| > 2.5$ is designated with $^{+}$ or $^{-}$, $|SES| > 5$ with $^{++}$ or $^{--}$ and $|SES| > 10$ with $^{+++}$ or $^{---}$ (see Section \\ref{sec:SES}). \\label{tab:housingattributes}"),
       type="latex", 
       sanitize.text.function = identity)
-print(xtable(pctab),
+print(xtable(pctab_housing),
       type="latex", 
       sanitize.text.function = identity,
       only.contents=TRUE,
@@ -696,3 +696,33 @@ print(xtable(pctab),
             
 ```
 
+
+## Separate Per capita and household table
+
+
+
+```{r eval=TRUE}
+hhtab <- rbind(hhtab_household, hhtab_housing)
+pctab <- rbind(pctab_household, pctab_housing)
+```
+
+
+```{r eval=TRUE}
+print(xtable(hhtab,
+             size = "\\footnotesize",
+             caption = "Mean (standard deviation) of household and housing related attributes within household emission quartiles and the total population (pop.). A $|SES| > 2.5$ is designated with $^{+}$ or $^{-}$, $|SES| > 5$ with $^{++}$ or $^{--}$ and $|SES| > 10$ with $^{+++}$ or $^{---}$ (see Section \\ref{sec:SES}). \\label{tab:householdquartiles}"),
+      type="latex", 
+      sanitize.text.function = identity)
+
+            
+```
+
+
+```{r eval=TRUE}
+print(xtable(pctab,
+             size = "\\footnotesize",
+             caption = "Mean (standard deviation) of household and housing related attributes within per capita emission quartiles and the total population (pop.). A $|SES| > 2.5$ is designated with $^{+}$ or $^{-}$, $|SES| > 5$ with $^{++}$ or $^{--}$ and $|SES| > 10$ with $^{+++}$ or $^{---}$ (see Section \\ref{sec:SES}). \\label{tab:pcquartiles}"),
+      type="latex", 
+      sanitize.text.function = identity)
+
+            
