@@ -40,18 +40,6 @@ dfgood <- read_sav("data/dfgood_mice.sav")
 svy_all <- readRDS("data/svy_all_mice.rds")
 svy_good <- readRDS("data/svy_good_mice.rds")
 ```
-# Correlation of income and living space
-
-```{r}
-svyvar(i_hhsize ~ i_fihhmnnet1_dv, svy_good, na.rm=T) %>% as.matrix %>% cov2cor
-
-svyvar(i_hhsize ~ eq_income, svy_good, na.rm=T) %>% as.matrix %>% cov2cor
-svyvar(i_hhsize ~ i_hsbeds, svy_good, na.rm=T) %>% as.matrix %>% cov2cor
-
-svyvar(i_hsbeds ~ eq_income, svy_good, na.rm=T) %>% as.matrix %>% cov2cor
-
-
-```
 
 
 
@@ -209,7 +197,7 @@ svyglm_minimal_total <- svyglm(total_co2 ~
                                 I(i_hhsize == 1) +
                                 # Accommodation 
                                 i_hsbeds +
-                                i_hsrooms + 
+                                i_hsrooms +
                                 as.factor(i_fuelhave3),
                        svy_good, na.exclude(TRUE), family = gaussian())
 
@@ -219,7 +207,7 @@ svyglm_minimal_pc <- svyglm(per_capita_co2 ~
                                 I(i_hhsize == 1) +
                                 # Accommodation 
                                 i_hsbeds +
-                                i_hsrooms + 
+                                i_hsrooms +
                                 as.factor(i_fuelhave3),
                            svy_good, na.exclude(TRUE), family = gaussian())
 
@@ -347,7 +335,7 @@ dev.off()
 ### House Ownership
 
 ```{r}
-rn = c("HH CO2 in kg","PC CO2 in kg", "eq. income in POUNDS", "# persons", "# kids", "# pensioners", "# bedrooms")
+rn = c("HH CO2 in kg","PC CO2 in kg", "eq. income in POUNDS", "# persons", "# kids", "# pensioners", "Rooms p.P.")
 cn = c("Owned outright", 
        "Owned on mortgage",
        "Shared ownership", 
@@ -355,7 +343,7 @@ cn = c("Owned outright",
        "Rent free")
 
 
-S_cont <- svyby(~total_co2 / per_capita_co2 / eq_income / i_hhsize / i_nkids_dv / i_npensioner / i_hsbeds,
+S_cont <- svyby(~total_co2 / per_capita_co2 / eq_income / i_hhsize / i_nkids_dv / i_npensioner / I((i_hsbeds + i_hsrooms) / i_hhsize),
                 ~i_hsownd, svy_good, svymean, na.rm=T)
 
 tab <- sprintf("%i (%i)", round(S_cont[,2]), round(S_cont[,9]))
@@ -373,7 +361,7 @@ ptab
 ```{r eval=TRUE}
 xtable(ptab,
        size = "\\small",
-       caption = "Mean values (standard deviations) of household (HH) and per capita (PC) annual CO2 emissions in kg, equivalised annual household income in \\pounds, household size, number of kids, number of pensioners and number of bedrooms with respect to ownership status of accomodation. \\label{tab:ownership}")
+       caption = "Mean values (standard deviations) of household (HH) and per capita (PC) annual \\coo emissions in kg, equivalised annual household income in \\pounds, household size, number of kids, number of pensioners and rooms per person with respect to ownership status of accomodation. \\label{tab:ownership}")
 ```
 
 
@@ -497,18 +485,18 @@ rn = c("Household CO2 in kg",
        "Equivalised income in \\pounds",
        "Number of persons", 
        "Percentage of single households", 
-       "Number of bedrooms",
-       "Number of other rooms", 
+       "Number of bedrooms per person",
+       "Number of other rooms per person", 
        "Percentage using heating oil")
 
 S_cont <- svyby(~total_co2 /
                 per_capita_co2 /
-                i_fihhmnnet1_dv /
+                i_fihhmnnet1_dv  /
                 eq_income /
                 i_hhsize /
                 I(i_hhsize>1) /
-                i_hsbeds /
-                i_hsrooms /
+                I(i_hsbeds / i_hhsize) /
+                I(i_hsrooms / i_hhsize) /
                 I(i_fuelhave3==1),
                 ~per_capita_co2_quartile, svy_good, svymean, na.rm=T)
 S_cont <- S_cont[,c(1:7, 9:10, 12:18, 20:21, 23)]
@@ -759,3 +747,55 @@ print(xtable(pctab,
 
             
 ```
+
+
+
+
+# Living Space and Fuel Models
+
+
+These are the most minimal (but still almost optimal) models we can construct, with only information on living space and heating technology.
+```{r warning=FALSE}
+svyglm_two_total <- svyglm(total_co2 ~
+                                i_fihhmnnet1_dv,
+                                #i_hhsize + 
+                                # Accommodation 
+                                #I(i_hsbeds +
+                                #i_hsrooms) +
+                                #as.factor(i_fuelhave3),
+                       svy_good, na.exclude(TRUE), family = gaussian())
+
+svyglm_two_pc <- svyglm(per_capita_co2 ~
+                                # Accommodation 
+                                I((i_hsbeds +
+                                i_hsrooms) / i_hhsize) +
+                                as.factor(i_fuelhave3),
+                           svy_good, na.exclude(TRUE), family = gaussian())
+
+S <- summary(svyglm_two_total)
+S
+get.model.fit(S, total_N)
+```
+per capita
+```{r warning=FALSE}
+
+S <- summary(svyglm_two_pc)
+S
+get.model.fit(S, pc_N)
+```
+
+
+
+# Correlation of living space per person and wealth (eq_income)
+
+```{r}
+svyvar(I((i_hsbeds + i_hsrooms ) / i_hhsize) ~ I(eq_income ), svy_good, na.rm=T) %>% as.matrix %>% cov2cor
+```
+```{r}
+library("jtools")
+
+limo <- svyglm(I(i_hsrooms) ~ I(eq_income ), svy_good, na.exclude(TRUE))
+
+summ(limo)
+```
+
