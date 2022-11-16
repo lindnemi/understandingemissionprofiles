@@ -42,6 +42,42 @@ svy_good <- readRDS("data/svy_good_mice.rds")
 ```
 
 
+#
+
+```{r}
+#pdf("../plots/histogram_miro.pdf")
+
+nbreaks=128
+cex_factor = 3
+
+per_capita_co2_quartiles <- svyquantile(~per_capita_co2, svy_good, seq(from=0.25, to=0.75, by=0.25))
+
+my_breaks <- svyhist(~per_capita_co2, svy_good, breaks=nbreaks)$breaks
+
+png("../plots/histogram_miro.png", height = 1280, width = 1920, res=120)
+
+
+my_colors <- rep("#4477AA", length(my_breaks))       # Specify colors corresponding to breaks
+my_colors[my_breaks > per_capita_co2_quartiles[1] & my_breaks <= per_capita_co2_quartiles[2]] <- "#228833"
+my_colors[my_breaks > per_capita_co2_quartiles[2] & my_breaks <= per_capita_co2_quartiles[3]] <- "#CCBB44"
+my_colors[my_breaks > per_capita_co2_quartiles[3]] <- "#EE6677"
+
+svyhist(~per_capita_co2, svy_good, 
+        breaks=my_breaks, 
+        col=my_colors,
+        xlab = "",
+        main = "CO2 in kg",
+        xaxt="n",
+        yaxt="n",
+        ylab="",
+        cex.lab=cex_factor, cex.axis=cex_factor, cex.main=cex_factor, cex.sub=cex_factor)
+
+dev.off()
+```
+
+
+
+
 
 
 # Regressions analysis - Linear Models
