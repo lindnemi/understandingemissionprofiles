@@ -42,7 +42,9 @@ svy_good <- readRDS("data/svy_good_mice.rds")
 ```
 
 
-#
+# Histogram for overview schematic
+
+Using Paul Tol's colorblind-aware color scheme.
 
 ```{r}
 #pdf("../plots/histogram_miro.pdf")
