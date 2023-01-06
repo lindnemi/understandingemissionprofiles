@@ -864,3 +864,209 @@ limo <- svyglm(I(i_hsrooms) ~ I(eq_income ), svy_good, na.exclude(TRUE))
 summ(limo)
 ```
 
+# Quartile tables with odds ratio (OR) as EFFECT SIZE
+
+
+Since OR might be a more appropriate measure of effect size, we recreate the tables with the ++ and -- markers referring to OR.
+
+```{r}
+simpleOR <- function (p1, p2) {
+  return(p1 * (1-p2) / (p2 * (1-p1)))
+  }
+pretty_OR <- function(qform, form, rn, cn = c("lower","middle", "high", "top", "pop.")) {
+  # qform - name of quartile vector
+  # form  - name of categorical variable
+  # rn    - rownames
+
+  # multiply by 100 to represent percentages
+
+           
+  S <- svyby(update(form, ~as.factor(.)), 
+             update(qform, ~as.factor(.)), 
+             svy_good, svymean, na.rm=T) %>% select(!1) * 100
+  
+  dim <- ncol(S) / 2 
+  
+  M <- as.data.frame(svymean(update(form, ~as.factor(.)),
+                             svy_good, na.rm=T)) * 100
+  
+  PS <- S/100
+  
+  Z <- rbind(simpleOR(PS[1,], colSums(PS[c(2,3,4),]/3)),
+             simpleOR(PS[2,], colSums(PS[c(1,3,4),]/3)),
+             simpleOR(PS[3,], colSums(PS[c(1,2,4),]/3)),
+             simpleOR(PS[4,], colSums(PS[c(1,2,3),]/3)))
+        
+  Z  <- Z[,1:dim]
+  # copy Z
+  
+  
+  stars <- data.frame(Z)
+  stars[] <-  ""
+  stars[Z > 1.5 & Z < 2] = "+"
+  stars[Z > 2 & Z < 3] = "++"
+  stars[Z > 3] = "+++"
+  stars[Z < 1/1.5 & Z > 1/2] = "-"
+  stars[Z < 1/2 & Z > 1/3] = "--"
+  stars[Z < 1/3] = "---"
+  
+  tab <- sprintf("$%.1f \\ (%.1f)^{%s}$", 
+                 S[1,1:(dim)], 
+                 S[1,(1+dim):(2*dim)], 
+                 stars[1,])
+  for (i in 2:nrow(S)){
+    tab <- rbind(tab, sprintf("$%.1f \\ (%.1f)^{%s}$", 
+                              S[i,1:(dim)], 
+                              S[i,(1+dim):(2*dim)],
+                              stars[i,]))
+  }
+  tab <- rbind(tab, sprintf("$%.1f \\ (%.1f)$", M$mean, M$SE))
+  P <- matrix(t(tab),dim,5,dimnames=list(rn,cn))
+  if (dim==2) {
+    return(P[2,,drop=FALSE]) # For factor variables return only second level
+  }
+  return(P)
+}
+```
+
+## Compute tables
+
+
+### Household Characteristics
+
+
+
+```{r}
+household_OR <- function(quartile_formula) {
+  return(rbind(pretty_OR(quartile_formula, ~hh_hiqual, 
+                           c("Academic degree", 
+                             "Other higher degree", 
+                             "Upper secondary education",
+                             "Lower secondary education", 
+                             "Other qualification", 
+                             "No qualification",
+                             "Missing `qualification`")),
+              pretty_OR(quartile_formula, ~I(i_fborn==1), 
+                           c("Everyone born in UK",
+                             "One or more persons not born in UK")),
+              pretty_OR(quartile_formula, ~I(i_hhsize==1),
+                           c("Two or more person household",
+                             "Single household")),
+              pretty_OR(quartile_formula, ~I(nfem==0), 
+                           c("One or more female adults",
+                             "No female adults")),
+              pretty_OR(quartile_formula, ~I(i_nkids_dv>0),
+                           c("No children", 
+                             "One or more children")),
+              pretty_OR(quartile_formula, ~I(i_nonepar_dv>0),
+                           c("No lone parents", 
+                             "One or more lone parents")),
+              pretty_OR(quartile_formula, ~I(i_ncouple_dv>0),
+                           c("No couples", 
+                             "One or more couples")),
+              pretty_OR(quartile_formula, ~I(i_nue_dv>0),
+                           c("No unemployed", 
+                             "One or more unemployed")),
+              pretty_OR(quartile_formula, ~I(i_npensioner>0),
+                           c("No pensioners", 
+                             "One or more pensioners")),
+              pretty_OR(quartile_formula, ~I(nhcond>0),
+                           c("No long-standing illness or disability", 
+                             "One or more with long-standing illness or disability"))))
+}
+```
+
+Household quartiles
+```{r}
+hhtab_household <- household_OR(~total_co2_quartile)
+hhtab_household
+```
+
+Per-Captia quartiles
+```{r}
+pctab_household <- household_OR(~per_capita_co2_quartile)
+pctab_household
+```
+
+## Housing characterisitics
+
+```{r}
+housing_OR <- function(quartile_formula) {
+  return(rbind(pretty_OR(quartile_formula, ~i_hsownd, 
+                           c("Accommodation owned outright", 
+                             "Owned on mortgage",
+                             "Shared ownership", 
+                             "Rented", 
+                             "Rent free")),
+              pretty_OR(quartile_formula, ~i_urban_dv, 
+                           c("Urban area", "Rural area")),
+              pretty_OR(quartile_formula, ~i_gor_dv, 
+                           c("North East",
+                             "North West",
+                             "Yorkshire and the Humber", 
+                             "East Midlands", 
+                             "West Midlands",
+                             "East of England", 
+                             "London", 
+                             "South East", 
+                             "South West", 
+                             "Wales",
+                             "Scotland", 
+                             "Northern Ireland")),
+              pretty_OR(quartile_formula, ~i_fuelhave3,
+                           c("No heating oil", 
+                             "Heating oil")),
+              pretty_OR(quartile_formula, ~i_heatch,
+                           c("No central heating", 
+                             "Central heating")))) 
+}
+```
+Household quartiles
+
+```{r}
+hhtab_housing <- housing_OR(~total_co2_quartile)
+hhtab_housing
+```
+
+Per Capita quartiles
+```{r}
+pctab_housing <- housing_OR(~per_capita_co2_quartile)
+pctab_housing
+```
+
+
+## Separate Per capita and household table
+
+
+
+```{r eval=TRUE}
+hhtab <- rbind(hhtab_household, hhtab_housing)
+```
+
+
+```{r eval=TRUE}
+pctab <- rbind(pctab_household, pctab_housing)
+```
+
+
+```{r eval=TRUE}
+print(xtable(hhtab,
+             size = "\\footnotesize",
+             caption = "Estimated mean (and standard error) of household and housing related attributes within household emission quartiles and the total population (pop.). As a measure of effect size an odds ratio of $1.5$, $2$ and $3$ is designated with $^{+}$, $^{++}$ and $^{+++}$ and an odds ratio of $2/3$, $1/2$ and $1/3$ is designated with $^{-}$, $^{--}$ and $^{---}$ (cf. Section \\ref{sec:OR}). \\label{tab:hhextended}"),
+      type="latex", 
+      sanitize.text.function = identity)
+
+            
+```
+
+
+```{r eval=TRUE}
+print(xtable(pctab,
+             size = "\\footnotesize",
+             caption = "Estimated mean (and standard error) of household and housing related attributes within per capita emission quartiles and the total population (pop.). As a measure of effect size an odds ratio of $1.5$, $2$ and $3$ is designated with $^{+}$, $^{++}$ and $^{+++}$ and an odds ratio of $2/3$, $1/2$ and $1/3$ is designated with $^{-}$, $^{--}$ and $^{---}$ (cf. Section \\ref{sec:OR}). \\label{tab:pcextended}"),
+      type="latex", 
+      sanitize.text.function = identity)
+
+            
+```
+
