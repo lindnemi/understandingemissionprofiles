@@ -9,6 +9,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "..")
 ```
 
 # Preliminaries: Version control
@@ -29,22 +30,25 @@ options(survey.lonely.psu = "adjust")
 library("car")
 library("xtable")
 library("stargazer")
+```
 
+
+```{r message=FALSE}
 # df1 <- read_sav("data/i_hhresp_preprocessed.sav")
 # dfgood <- read_sav("data/dfgood.sav")
 # svy_all <- readRDS("data/svy_all.rds")
 # svy_good <- readRDS("data/svy_good.rds")
 
-df1 <- read_sav("data/i_hhresp_preprocessed_mice.sav")
-dfgood <- read_sav("data/dfgood_mice.sav")
-svy_all <- readRDS("data/svy_all_mice.rds")
-svy_good <- readRDS("data/svy_good_mice.rds")
+df1 <- read_sav("../data/i_hhresp_preprocessed_mice.sav")
+dfgood <- read_sav("../data/dfgood_mice.sav")
+svy_all <- readRDS("../data/svy_all_mice.rds")
+svy_good <- readRDS("../data/svy_good_mice.rds")
 ```
 
 
 # Histogram for overview schematic
 
-Using Paul Tol's colorblind-aware color scheme.
+Using Paul Tol's colorblind-aware color scheme. First for the overview schematic on Miro.
 
 ```{r}
 #pdf("../plots/histogram_miro.pdf")
@@ -56,12 +60,14 @@ per_capita_co2_quartiles <- svyquantile(~per_capita_co2, svy_good, seq(from=0.25
 
 my_breaks <- svyhist(~per_capita_co2, svy_good, breaks=nbreaks)$breaks
 
-png("../plots/histogram_miro.png", height = 1280, width = 1920, res=120)
+#png("../plots/histogram_miro.png", height = 1280, width = 1920, res=120)
 
 
 my_colors <- rep("#4477AA", length(my_breaks))       # Specify colors corresponding to breaks
-my_colors[my_breaks > per_capita_co2_quartiles[1] & my_breaks <= per_capita_co2_quartiles[2]] <- "#228833"
-my_colors[my_breaks > per_capita_co2_quartiles[2] & my_breaks <= per_capita_co2_quartiles[3]] <- "#CCBB44"
+my_colors[my_breaks > per_capita_co2_quartiles[1] & 
+          my_breaks <= per_capita_co2_quartiles[2]] <- "#228833"
+my_colors[my_breaks > per_capita_co2_quartiles[2] & 
+          my_breaks <= per_capita_co2_quartiles[3]] <- "#CCBB44"
 my_colors[my_breaks > per_capita_co2_quartiles[3]] <- "#EE6677"
 
 svyhist(~per_capita_co2, svy_good, 
@@ -74,10 +80,31 @@ svyhist(~per_capita_co2, svy_good,
         ylab="",
         cex.lab=cex_factor, cex.axis=cex_factor, cex.main=cex_factor, cex.sub=cex_factor)
 
-dev.off()
+#dev.off()
 ```
 
+Then for the Dissertation with axes.
 
+
+```{r}
+png("../plots/histogram_co2_quartiles.png", height = 1280, width = 1920, res=120)
+
+cex_factor = 3
+par(mar=c(5,6,4,1)+1.5, mgp=c(5,2,0))
+options(scipen=999) # disable scientifc notation
+svyhist(~per_capita_co2, svy_good, 
+        breaks=my_breaks, 
+        col=my_colors,
+        xlab = "CO2 in kg",
+        main = "CO2 emission quartiles",
+        #xaxt="n",
+        #yaxt="n",
+        ylab="density",
+        cex.lab=cex_factor, cex.axis=cex_factor, cex.main=cex_factor, cex.sub=cex_factor)
+options(scipen=0) # reset to default value
+
+dev.off()
+```
 
 
 
