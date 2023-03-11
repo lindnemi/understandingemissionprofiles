@@ -87,7 +87,7 @@ Then for the Dissertation with axes.
 
 
 ```{r}
-png("../plots/histogram_co2_quartiles.png", height = 1280, width = 1920, res=120)
+#png("../plots/histogram_co2_quartiles.png", height = 1280, width = 1920, res=120)
 
 cex_factor = 3
 par(mar=c(5,6,4,1)+1.5, mgp=c(5,2,0))
@@ -103,7 +103,7 @@ svyhist(~per_capita_co2, svy_good,
         cex.lab=cex_factor, cex.axis=cex_factor, cex.main=cex_factor, cex.sub=cex_factor)
 options(scipen=0) # reset to default value
 
-dev.off()
+#dev.off()
 ```
 
 
@@ -354,6 +354,15 @@ svyby(~total_co2, ~I(eq_income > 6000), svy_good, svymean)
 
 ### Income deciles vs CO2 emissions
 
+```{r}
+pc_income_deciles <- svyquantile(~I(i_fihhmnnet1_dv/i_hhsize), svy_all, seq(from=0.1, to=0.9, by=0.1))
+svy_good <- update(svy_good, pc_income = i_fihhmnnet1_dv/i_hhsize)
+
+svy_good <- update(svy_good, 
+                  pc_income_decile = factor(1 + findInterval(pc_income, pc_income_deciles)))
+```
+
+
 We compare HH and PC emissions with respect to income deciles.
 ```{r}
 
@@ -361,12 +370,23 @@ co2_vs_income_decile = svyby(~per_capita_co2 / total_co2,
                              ~eq_income_decile, svy_good, svymean)
 eq_income_vs_income_decile = svyby(~eq_income, 
                              ~eq_income_decile, svy_good, svymean)
+
+
+co2_vs_hh_income_decile = svyby(~total_co2, 
+                             ~hh_income_decile, svy_good, svymean)
+hh_income_vs_hh_income_decile = svyby(~i_fihhmnnet1_dv, 
+                             ~hh_income_decile, svy_good, svymean)
+
+co2_vs_pc_income_decile = svyby(~per_capita_co2, 
+                             ~pc_income_decile, svy_good, svymean)
+pc_income_vs_pc_income_decile = svyby(~pc_income, 
+                             ~pc_income_decile, svy_good, svymean)
 ```
 
 The following plot shows mean CO2 emissions of each income decile.  We see that CO2 emissions are regressively distributed, since a 1% increase in income leads to less than 1 % increase in emissions.
 
 ```{r}
-pdf("plots/income_vs_co2_mice.pdf", 14, 7)
+#pdf("plots/income_vs_co2_mice.pdf", 14, 7)
 
 
 par(mfrow=c(1,2), pty="s", cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5, lwd=1.5)
@@ -393,6 +413,67 @@ lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,2],
       col = "blue")
 abline(h = mean(co2_vs_income_decile[,2]),
        col = "blue", lty = 3)
+
+#dev.off()
+```
+
+
+```{r}
+pdf("income_vs_co2_new.pdf", 14, 7)
+
+
+
+# "#4477AA" "#228833" "#CCBB44" "#EE6677" (blue, green, yellow, red)
+col_eq <- "#EE6677"
+col_hh <- "#4477AA"
+col_pc <- "#228833"
+
+cex_factor <- 1.8
+  
+par(mfrow=c(1,2), pty="s", cex.lab=cex_factor, cex.axis=cex_factor, cex.main=cex_factor, cex.sub=cex_factor, lwd=3)
+
+plot(c(eq_income_vs_income_decile$eq_income, hh_income_vs_hh_income_decile$i_fihhmnnet1_dv),
+     c(co2_vs_income_decile[,3],co2_vs_hh_income_decile[,2]),
+     xlab= "Monthly Income", 
+     ylab="Household CO2 Emissions in kg",
+     ylim = c(0,8000),
+     xlim = c(0,8000),
+     col = c(rep(col_eq,10), rep(col_hh,10)), cex=2)
+
+#axis(1, at=1:10, labels = round(eq_income_vs_income_decile$eq_income), las = 2)
+lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,3],
+      col = col_eq)
+
+abline(h = svymean(~total_co2,svy_good),
+       col = col_eq, lty = 3)
+
+lines(hh_income_vs_hh_income_decile$i_fihhmnnet1_dv, co2_vs_hh_income_decile[,2],
+      col = col_hh)
+
+legend("bottomright", c("Eq. Income", "Net Income"), fill=c(col_eq, col_hh), cex=cex_factor)
+
+
+
+plot(c(eq_income_vs_income_decile$eq_income,pc_income_vs_pc_income_decile$pc_income),
+     c(co2_vs_income_decile[,2], co2_vs_pc_income_decile[,2]),
+     xlab= "Monthly Income", 
+     ylab="Per Capita CO2 Emissions in kg",
+     ylim = c(0,4000),
+     xlin = c(0,4000),
+     col = c(rep(col_eq,10), rep(col_pc,10)), cex=2)
+
+lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,2],
+      col = col_eq)
+
+abline(h = svymean(~per_capita_co2, svy_good),
+       col = col_eq, lty = 3)
+
+lines(pc_income_vs_pc_income_decile$pc_income, co2_vs_pc_income_decile[,2],
+      col = col_pc)
+
+legend("bottomright", c("Eq. Income", "PC Income"), fill=c(col_eq, col_pc), cex=cex_factor)
+
+
 
 dev.off()
 ```
@@ -556,7 +637,7 @@ rn = c("Household CO2 in kg",
 
 S_cont <- svyby(~total_co2 /
                 per_capita_co2 /
-                i_fihhmnnet1_dv  /
+                I(i_fihhmnnet1_dv/i_hhsize)  / #here the review wants pc emission 
                 eq_income /
                 i_hhsize /
                 I(i_hhsize>1) /
@@ -584,234 +665,6 @@ ptab
 xtable(ptab, caption = "Means (standard deviations) of socio-metabolic profiles in UKs Housing sector at per capita level. \\label{tab:PCquartiles}")
 ```
 
-
-
-## Extensive quartile tables (quartile -> variable)
-
-To be able to better compare different quartiles to each other we report standardized effect sizes (SES) in the following way: Given a binary characteristic $X$ its mean value $\mu_i(X)$ in the quartile $i$ is computed, i.e. the share of households in quartile $i$ with that characteristic. The SES is then the difference of $\mu_i(X)$ and the estimated poplation mean $mu(X)$, divided by the standard error $se_i(X)$ in quartile $i$. 
-
-$$
-SES_i(X) = \frac{\mu_i(X) - \mu(X)}{se_i(X)}
-$$
-This is similar to the test statistic used for a $t$-test, however since the quartile is a subset of the whole population, a $t$-test can not be straightforwardly applied. In the quartile tables a $|SES| > 2.5$ is designated with $+$ or $-$ , $|SES| > 5$ with $++$ or $--$ and $|SES|  > 10$ with $+++$ or $---$. 
-
-```{r}
-pretty_table <- function(qform, form, rn, cn = c("lower","middle", "high", "top", "pop.")) {
-  # qform - name of quartile vector
-  # form  - name of categorical variable
-  # rn    - rownames
-
-  # multiply by 100 to represent percentages
-
-           
-  S <- svyby(update(form, ~as.factor(.)), 
-             update(qform, ~as.factor(.)), 
-             svy_good, svymean, na.rm=T) %>% select(!1) * 100
-  
-  dim <- ncol(S) / 2 
-  
-  M <- as.data.frame(svymean(update(form, ~as.factor(.)),
-                             svy_good, na.rm=T)) * 100
-  if (dim == 1) {
-    Z <- (S[,1] - M$mean) / S[,2]
-  } else {
-    Z <- sweep(S[,1:dim], 2, M$mean) / S[,(dim+1):(2*dim)]
-  }
-  # copy Z
-  stars <- data.frame(Z)
-  stars[] <-  ""
-  stars[Z > 2.5 & Z < 5] = "+"
-  stars[Z > 5 & Z < 10] = "++"
-  stars[Z > 10] = "+++"
-  stars[Z < -2.5 & Z > -5] = "-"
-  stars[Z < -5 & Z > -10] = "--"
-  stars[Z < -10] = "---"
-  
-  tab <- sprintf("$%.1f \\ (%.1f)^{%s}$", 
-                 S[1,1:(dim)], 
-                 S[1,(1+dim):(2*dim)], 
-                 stars[1,])
-  for (i in 2:nrow(S)){
-    tab <- rbind(tab, sprintf("$%.1f \\ (%.1f)^{%s}$", 
-                              S[i,1:(dim)], 
-                              S[i,(1+dim):(2*dim)],
-                              stars[i,]))
-  }
-  tab <- rbind(tab, sprintf("$%.1f \\ (%.1f)$", M$mean, M$SE))
-  P <- matrix(t(tab),dim,5,dimnames=list(rn,cn))
-  if (dim==2) {
-    return(P[2,,drop=FALSE]) # For factor variables return only second level
-  }
-  return(P)
-}
-```
-
-
-
-# Household Characteristics
-
-
-
-```{r}
-household_table <- function(quartile_formula) {
-  return(rbind(pretty_table(quartile_formula, ~hh_hiqual, 
-                           c("Academic degree", 
-                             "Other higher degree", 
-                             "Upper secondary education",
-                             "Lower secondary education", 
-                             "Other qualification", 
-                             "No qualification",
-                             "Missing `qualification`")),
-              pretty_table(quartile_formula, ~I(i_fborn==1), 
-                           c("Everyone born in UK",
-                             "One or more persons not born in UK")),
-              pretty_table(quartile_formula, ~I(i_hhsize==1),
-                           c("Two or more person household",
-                             "Single household")),
-              pretty_table(quartile_formula, ~I(nfem==0), 
-                           c("One or more female adults",
-                             "No female adults")),
-              pretty_table(quartile_formula, ~I(i_nkids_dv>0),
-                           c("No children", 
-                             "One or more children")),
-              pretty_table(quartile_formula, ~I(i_nonepar_dv>0),
-                           c("No lone parents", 
-                             "One or more lone parents")),
-              pretty_table(quartile_formula, ~I(i_ncouple_dv>0),
-                           c("No couples", 
-                             "One or more couples")),
-              pretty_table(quartile_formula, ~I(i_nue_dv>0),
-                           c("No unemployed", 
-                             "One or more unemployed")),
-              pretty_table(quartile_formula, ~I(i_npensioner>0),
-                           c("No pensioners", 
-                             "One or more pensioners")),
-              pretty_table(quartile_formula, ~I(nhcond>0),
-                           c("No long-standing illness or disability", 
-                             "One or more with long-standing illness or disability"))))
-}
-```
-
-Household quartiles
-```{r}
-hhtab_household <- household_table(~total_co2_quartile)
-hhtab_household
-```
-
-Per-Captia quartiles
-```{r}
-pctab_household <- household_table(~per_capita_co2_quartile)
-pctab_household
-```
-
-
-```{r eval=TRUE}
-print(xtable(hhtab_household,
-             size = "\\footnotesize",
-             caption = "Mean (standard deviation) of household-related attributes within household and per capita emission quartiles. A $|SES| > 2.5$ is designated with $^{+}$ or $^{-}$, $|SES| > 5$ with $^{++}$ or $^{--}$ and $|SES| > 10$ with $^{+++}$ or $^{---}$ (see Section \\ref{sec:SES}). \\label{tab:householdattributes}"),
-      type="latex", 
-      sanitize.text.function = identity)
-print(xtable(pctab_household),
-      type="latex", 
-      sanitize.text.function = identity,
-      only.contents=TRUE,
-      comment=FALSE)
-            
-```
-
-
-## Housing characterisitics
-
-```{r}
-housing_table <- function(quartile_formula) {
-  return(rbind(pretty_table(quartile_formula, ~i_hsownd, 
-                           c("Accommodation owned outright", 
-                             "Owned on mortgage",
-                             "Shared ownership", 
-                             "Rented", 
-                             "Rent free")),
-              pretty_table(quartile_formula, ~i_urban_dv, 
-                           c("Urban area", "Rural area")),
-              pretty_table(quartile_formula, ~i_gor_dv, 
-                           c("North East",
-                             "North West",
-                             "Yorkshire and the Humber", 
-                             "East Midlands", 
-                             "West Midlands",
-                             "East of England", 
-                             "London", 
-                             "South East", 
-                             "South West", 
-                             "Wales",
-                             "Scotland", 
-                             "Northern Ireland")),
-              pretty_table(quartile_formula, ~i_fuelhave3,
-                           c("No heating oil", 
-                             "Heating oil")),
-              pretty_table(quartile_formula, ~i_heatch,
-                           c("No central heating", 
-                             "Central heating")))) 
-}
-```
-Household quartiles
-
-```{r}
-hhtab_housing <- housing_table(~total_co2_quartile)
-hhtab_housing
-```
-
-Per Capita quartiles
-```{r}
-pctab_housing <- housing_table(~per_capita_co2_quartile)
-pctab_housing
-```
-
-
-```{r eval=TRUE}
-print(xtable(hhtab_housing,
-             size = "\\footnotesize",
-             caption = "Mean (standard deviation) of housing-related attributes within household and per capita emission quartiles. A $|SES| > 2.5$ is designated with $^{+}$ or $^{-}$, $|SES| > 5$ with $^{++}$ or $^{--}$ and $|SES| > 10$ with $^{+++}$ or $^{---}$ (see Section \\ref{sec:SES}). \\label{tab:housingattributes}"),
-      type="latex", 
-      sanitize.text.function = identity)
-print(xtable(pctab_housing),
-      type="latex", 
-      sanitize.text.function = identity,
-      only.contents=TRUE,
-      comment=FALSE)
-            
-```
-
-
-## Separate Per capita and household table
-
-
-
-```{r eval=TRUE}
-hhtab <- rbind(hhtab_household, hhtab_housing)
-pctab <- rbind(pctab_household, pctab_housing)
-```
-
-
-```{r eval=TRUE}
-print(xtable(hhtab,
-             size = "\\footnotesize",
-             caption = "Mean (standard deviation) of household and housing related attributes within household emission quartiles and the total population (pop.). A $|SES| > 2.5$ is designated with $^{+}$ or $^{-}$, $|SES| > 5$ with $^{++}$ or $^{--}$ and $|SES| > 10$ with $^{+++}$ or $^{---}$ (see Section \\ref{sec:SES}). \\label{tab:householdquartiles}"),
-      type="latex", 
-      sanitize.text.function = identity)
-
-            
-```
-
-
-```{r eval=TRUE}
-print(xtable(pctab,
-             size = "\\footnotesize",
-             caption = "Mean (standard deviation) of household and housing related attributes within per capita emission quartiles and the total population (pop.). A $|SES| > 2.5$ is designated with $^{+}$ or $^{-}$, $|SES| > 5$ with $^{++}$ or $^{--}$ and $|SES| > 10$ with $^{+++}$ or $^{---}$ (see Section \\ref{sec:SES}). \\label{tab:pcquartiles}"),
-      type="latex", 
-      sanitize.text.function = identity)
-
-            
-```
 
 
 
