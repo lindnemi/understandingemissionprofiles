@@ -43,6 +43,13 @@ df1 <- read_sav("../data/i_hhresp_preprocessed_mice.sav")
 dfgood <- read_sav("../data/dfgood_mice.sav")
 svy_all <- readRDS("../data/svy_all_mice.rds")
 svy_good <- readRDS("../data/svy_good_mice.rds")
+
+```
+```{r}
+svy_good_per_capita <- svydesign(
+  id=~i_psu, strata=~i_strata, weights=~I(i_hhdenui_xw * i_hhsize), data=svy_good$variables)
+svy_all_per_capita <- svydesign(
+  id=~i_psu, strata=~i_strata, weights=~I(i_hhdenui_xw * i_hhsize), data=svy_all$variables)
 ```
 
 
@@ -56,9 +63,9 @@ Using Paul Tol's colorblind-aware color scheme. First for the overview schematic
 nbreaks=128
 cex_factor = 3
 
-per_capita_co2_quartiles <- svyquantile(~per_capita_co2, svy_good, seq(from=0.25, to=0.75, by=0.25))
+per_capita_co2_quartiles <- svyquantile(~per_capita_co2, svy_good_per_capita, seq(from=0.25, to=0.75, by=0.25))
 
-my_breaks <- svyhist(~per_capita_co2, svy_good, breaks=nbreaks)$breaks
+my_breaks <- svyhist(~per_capita_co2, svy_good_per_capita, breaks=nbreaks)$breaks
 
 #png("../plots/histogram_miro.png", height = 1280, width = 1920, res=120)
 
@@ -70,7 +77,7 @@ my_colors[my_breaks > per_capita_co2_quartiles[2] &
           my_breaks <= per_capita_co2_quartiles[3]] <- "#CCBB44"
 my_colors[my_breaks > per_capita_co2_quartiles[3]] <- "#EE6677"
 
-svyhist(~per_capita_co2, svy_good, 
+svyhist(~per_capita_co2, svy_good_per_capita, 
         breaks=my_breaks, 
         col=my_colors,
         xlab = "",
@@ -92,7 +99,7 @@ Then for the Dissertation with axes.
 cex_factor = 3
 par(mar=c(5,6,4,1)+1.5, mgp=c(5,2,0))
 options(scipen=999) # disable scientifc notation
-svyhist(~per_capita_co2, svy_good, 
+svyhist(~per_capita_co2, svy_good_per_capita, 
         breaks=my_breaks, 
         col=my_colors,
         xlab = "CO2 in kg",
@@ -118,7 +125,7 @@ Adjusted $R^2$ is a variant that accounts for the fact that the $R^2$ value will
 ```{r warning=FALSE, message=FALSE}
 total_null_model <- svyglm(total_co2 ~ 1, svy_good, na.exclude(TRUE), family = gaussian())
 total_N <- summary(total_null_model)
-pc_null_model <- svyglm(per_capita_co2 ~ 1, svy_good, na.exclude(TRUE), family = gaussian()) 
+pc_null_model <- svyglm(per_capita_co2 ~ 1, svy_good_per_capita, na.exclude(TRUE), family = gaussian()) 
 pc_N <- summary(pc_null_model)
 get.model.fit <- function(S, N){
   Rsq = 1 - (S$dispersion / N$dispersion )
@@ -187,7 +194,7 @@ svyglm_extended_pc <- svyglm(per_capita_co2 ~
                                 i_hsrooms + 
                                 as.factor(i_fuelhave3) +
                                 i_heatch,
-                                svy_good, na.exclude(TRUE), family = gaussian()) 
+                                svy_good_per_capita, na.exclude(TRUE), family = gaussian()) 
 
 ```
 
@@ -202,6 +209,16 @@ vif(svyglm_extended_total)
 get.model.fit(S, total_N)
 ```
 Same analysis for the PC model:
+
+```{r echo=FALSE}
+
+
+S <- summary(svyglm_extended_pc)
+S
+vif(svyglm_extended_pc)
+get.model.fit(S, pc_N)
+```
+
 
 ```{r echo=FALSE}
 
@@ -238,7 +255,7 @@ svyglm_reduced_pc <- svyglm(per_capita_co2 ~
                                 i_hsbeds +
                                 i_hsrooms + 
                                 as.factor(i_fuelhave3),
-                           svy_good, na.exclude(TRUE), family = gaussian())
+                           svy_good_per_capita, na.exclude(TRUE), family = gaussian())
 
 S <- summary(svyglm_reduced_total)
 S
@@ -274,13 +291,20 @@ svyglm_minimal_pc <- svyglm(per_capita_co2 ~
                                 i_hsbeds +
                                 i_hsrooms +
                                 as.factor(i_fuelhave3),
-                           svy_good, na.exclude(TRUE), family = gaussian())
+                           svy_good_per_capita, na.exclude(TRUE), family = gaussian())
 
 S <- summary(svyglm_minimal_total)
 S
 get.model.fit(S, total_N)
 ```
 per capita
+```{r warning=FALSE}
+
+S <- summary(svyglm_minimal_pc)
+S
+get.model.fit(S, pc_N)
+```
+
 ```{r warning=FALSE}
 
 S <- summary(svyglm_minimal_pc)
@@ -355,21 +379,33 @@ svyby(~total_co2, ~I(eq_income > 6000), svy_good, svymean)
 ### Income deciles vs CO2 emissions
 
 ```{r}
-pc_income_deciles <- svyquantile(~I(i_fihhmnnet1_dv/i_hhsize), svy_all, seq(from=0.1, to=0.9, by=0.1))
-svy_good <- update(svy_good, pc_income = i_fihhmnnet1_dv/i_hhsize)
-
-svy_good <- update(svy_good, 
+pc_income_deciles <- svyquantile(~I(i_fihhmnnet1_dv/i_hhsize), svy_all_per_capita, seq(from=0.1, to=0.9, by=0.1))
+svy_good_per_capita <- update(svy_good_per_capita, pc_income = i_fihhmnnet1_dv/i_hhsize)
+svy_good_per_capita <- update(svy_good_per_capita, 
                   pc_income_decile = factor(1 + findInterval(pc_income, pc_income_deciles)))
+
+eq_income_deciles <- svyquantile(~eq_income, svy_all_per_capita, seq(from=0.1, to=0.9, by=0.1))
+svy_all_per_capita <- update(svy_all_per_capita, 
+                  eq_income_decile = factor(1 + findInterval(eq_income, eq_income_deciles)))
+svy_good_per_capita <- update(svy_good_per_capita, 
+                  eq_income_decile = factor(1 + findInterval(eq_income, eq_income_deciles)))
 ```
 
 
 We compare HH and PC emissions with respect to income deciles.
 ```{r}
 
-co2_vs_income_decile = svyby(~per_capita_co2 / total_co2, 
+# co2_vs_income_decile = svyby(~per_capita_co2 / total_co2, # WEIGHTS CORRECT?
+#                              ~eq_income_decile, svy_good, svymean)
+# eq_income_vs_income_decile = svyby(~eq_income, 
+#                              ~eq_income_decile, svy_good, svymean)
+
+pc_co2_vs_eq_income_decile = svyby(~per_capita_co2,
+                             ~eq_income_decile, svy_good_per_capita, svymean)
+hh_co2_vs_eq_income_decile = svyby(~total_co2,
                              ~eq_income_decile, svy_good, svymean)
 eq_income_vs_income_decile = svyby(~eq_income, 
-                             ~eq_income_decile, svy_good, svymean)
+                             ~eq_income_decile, svy_good_per_capita, svymean)
 
 
 co2_vs_hh_income_decile = svyby(~total_co2, 
@@ -378,48 +414,48 @@ hh_income_vs_hh_income_decile = svyby(~i_fihhmnnet1_dv,
                              ~hh_income_decile, svy_good, svymean)
 
 co2_vs_pc_income_decile = svyby(~per_capita_co2, 
-                             ~pc_income_decile, svy_good, svymean)
+                             ~pc_income_decile, svy_good_per_capita, svymean)
 pc_income_vs_pc_income_decile = svyby(~pc_income, 
-                             ~pc_income_decile, svy_good, svymean)
+                             ~pc_income_decile, svy_good_per_capita, svymean)
 ```
 
 The following plot shows mean CO2 emissions of each income decile.  We see that CO2 emissions are regressively distributed, since a 1% increase in income leads to less than 1 % increase in emissions.
 
 ```{r}
-#pdf("plots/income_vs_co2_mice.pdf", 14, 7)
-
-
-par(mfrow=c(1,2), pty="s", cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5, lwd=1.5)
-
-plot(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,3],
-     xlab= "Monthly Equivalised Income", 
-     ylab="Household CO2 Emissions in kg",
-     ylim = c(0,8000),
-     col = "red")
-#axis(1, at=1:10, labels = round(eq_income_vs_income_decile$eq_income), las = 2)
-lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,3],
-      col = "red")
-
-abline(h = mean(co2_vs_income_decile[,3]),
-       col = "red", lty = 3)
-
-
-plot(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,2],
-     xlab= "Monthly Equivalised Income", 
-     ylab="Per Capita CO2 Emissions in kg",
-     ylim = c(0,4000),
-     col = "blue")
-lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,2],
-      col = "blue")
-abline(h = mean(co2_vs_income_decile[,2]),
-       col = "blue", lty = 3)
+# #pdf("plots/income_vs_co2_mice.pdf", 14, 7)
+# 
+# 
+# par(mfrow=c(1,2), pty="s", cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5, lwd=1.5)
+# 
+# plot(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,3],
+#      xlab= "Monthly Equivalised Income", 
+#      ylab="Household CO2 Emissions in kg",
+#      ylim = c(0,8000),
+#      col = "red")
+# #axis(1, at=1:10, labels = round(eq_income_vs_income_decile$eq_income), las = 2)
+# lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,3],
+#       col = "red")
+# 
+# abline(h = mean(co2_vs_income_decile[,3]),
+#        col = "red", lty = 3)
+# 
+# 
+# plot(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,2],
+#      xlab= "Monthly Equivalised Income", 
+#      ylab="Per Capita CO2 Emissions in kg",
+#      ylim = c(0,4000),
+#      col = "blue")
+# lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,2],
+#       col = "blue")
+# abline(h = mean(co2_vs_income_decile[,2]),
+#        col = "blue", lty = 3)
 
 #dev.off()
 ```
 
 
 ```{r}
-pdf("income_vs_co2_new.pdf", 14, 7)
+pdf("income_vs_co2_newest.pdf", 14, 7)
 
 
 
@@ -433,7 +469,7 @@ cex_factor <- 1.8
 par(mfrow=c(1,2), pty="s", cex.lab=cex_factor, cex.axis=cex_factor, cex.main=cex_factor, cex.sub=cex_factor, lwd=3)
 
 plot(c(eq_income_vs_income_decile$eq_income, hh_income_vs_hh_income_decile$i_fihhmnnet1_dv),
-     c(co2_vs_income_decile[,3],co2_vs_hh_income_decile[,2]),
+     c(hh_co2_vs_eq_income_decile[,2],co2_vs_hh_income_decile[,2]),
      xlab= "Monthly Income", 
      ylab="Household CO2 Emissions in kg",
      ylim = c(0,8000),
@@ -441,7 +477,7 @@ plot(c(eq_income_vs_income_decile$eq_income, hh_income_vs_hh_income_decile$i_fih
      col = c(rep(col_eq,10), rep(col_hh,10)), cex=2)
 
 #axis(1, at=1:10, labels = round(eq_income_vs_income_decile$eq_income), las = 2)
-lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,3],
+lines(eq_income_vs_income_decile$eq_income, hh_co2_vs_eq_income_decile[,2],
       col = col_eq)
 
 abline(h = svymean(~total_co2,svy_good),
@@ -455,17 +491,17 @@ legend("bottomright", c("Eq. Income", "Net Income"), fill=c(col_eq, col_hh), cex
 
 
 plot(c(eq_income_vs_income_decile$eq_income,pc_income_vs_pc_income_decile$pc_income),
-     c(co2_vs_income_decile[,2], co2_vs_pc_income_decile[,2]),
+     c(pc_co2_vs_eq_income_decile[,2], co2_vs_pc_income_decile[,2]),
      xlab= "Monthly Income", 
      ylab="Per Capita CO2 Emissions in kg",
      ylim = c(0,4000),
      xlin = c(0,4000),
      col = c(rep(col_eq,10), rep(col_pc,10)), cex=2)
 
-lines(eq_income_vs_income_decile$eq_income, co2_vs_income_decile[,2],
+lines(eq_income_vs_income_decile$eq_income, pc_co2_vs_eq_income_decile[,2],
       col = col_eq)
 
-abline(h = svymean(~per_capita_co2, svy_good),
+abline(h = svymean(~per_capita_co2, svy_good_per_capita),
        col = col_eq, lty = 3)
 
 lines(pc_income_vs_pc_income_decile$pc_income, co2_vs_pc_income_decile[,2],
@@ -475,7 +511,7 @@ legend("bottomright", c("Eq. Income", "PC Income"), fill=c(col_eq, col_pc), cex=
 
 
 
-dev.off()
+#dev.off()
 ```
 
 ### House Ownership
